@@ -118,6 +118,9 @@ async function ensureDriveFolder(auth: JWT, folderName?: string): Promise<string
     q,
     fields: "files(id,name)",
     spaces: "drive",
+    // Soportar escenarios con unidades compartidas / items compartidos.
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
 
   const existing = listRes.data.files?.[0];
@@ -127,8 +130,11 @@ async function ensureDriveFolder(auth: JWT, folderName?: string): Promise<string
     requestBody: {
       name,
       mimeType: "application/vnd.google-apps.folder",
+      // Para replicar tu flujo: crear explícitamente en "root".
+      parents: ["root"],
     },
     fields: "id",
+    supportsAllDrives: true,
   });
 
   if (!created.data.id) throw new Error("No se pudo crear carpeta en Drive.");
@@ -184,6 +190,8 @@ async function ensureSpreadsheet(
     q,
     fields: "files(id,name)",
     spaces: "drive",
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
   const existing = listRes.data.files?.[0];
   let spreadsheetId = existing?.id;

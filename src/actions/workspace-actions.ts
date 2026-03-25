@@ -1,7 +1,6 @@
 "use server";
 
 import { randomBytes } from "crypto";
-import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
@@ -9,7 +8,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { createFreshWorkspaceResources } from "@/lib/google-setup";
-import { prisma } from "@/lib/prisma";
+import { dbQuery, dbTx } from "@/lib/db";
 import { WORKSPACE_COOKIE } from "@/lib/workspace-resolver";
 
 function cookieOptions() {
@@ -37,13 +36,12 @@ function safeNext(raw: string): string {
   return n.startsWith("/") && !n.startsWith("//") ? n : "/";
 }
 
-function isJoinCodeCollision(e: unknown): boolean {
-  if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") {
-    return false;
-  }
-  const t = e.meta?.target;
-  if (t === "joinCode") return true;
-  return Array.isArray(t) && t.includes("joinCode");
+function isJoinCodeUniqueViolation(e: unknown): boolean {
+  // Postgres duplicate key
+  const code = (e as { code?: string } | null)?.code;
+  if (code !== "23505") return false;
+  const msg = (e as { message?: string } | null)?.message ?? "";
+  return msg.includes("join_code") || msg.includes("joinCode");
 }
 
 export async function createWorkspaceAction(formData: FormData): Promise<void> {
@@ -66,29 +64,45 @@ export async function createWorkspaceAction(formData: FormData): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const joinCode = generateJoinCode();
     try {
-      const ws = await prisma.workspace.create({
-        data: {
-          joinCode,
-          driveFolderId: storage.driveFolderId,
-          sheetsSpreadsheetId: storage.sheetsSpreadsheetId,
-          sheetsSheetName: storage.sheetsSheetName,
-          createdByEmail: email,
-          members: {
-            create: { userEmail: email, role: "owner" },
-          },
-        },
+      const ws = await dbTx(async (client) => {
+        const createdWsRes = await client.query<
+          { id: string; join_code: string }
+        >(
+          `
+            insert into public.workspace
+              (join_code, drive_folder_id, sheets_spreadsheet_id, sheets_sheet_name, created_by_email)
+            values ($1, $2, $3, $4, $5)
+            returning id, join_code
+          `,
+          [
+            joinCode,
+            storage.driveFolderId,
+            storage.sheetsSpreadsheetId,
+            storage.sheetsSheetName,
+            email,
+          ],
+        );
+        const createdWs = createdWsRes.rows[0];
+
+        await client.query(
+          `
+            insert into public.user_workspace (user_email, workspace_id, role)
+            values ($1, $2, 'owner')
+          `,
+          [email, createdWs.id],
+        );
+
+        return createdWs;
       });
 
       const cookieStore = await cookies();
       cookieStore.set(WORKSPACE_COOKIE, ws.id, cookieOptions());
       revalidatePath("/");
-      redirect("/espacio/exito?c=" + encodeURIComponent(ws.joinCode));
+      redirect("/espacio/exito?c=" + encodeURIComponent(ws.join_code));
     } catch (e) {
       if (isRedirectError(e)) throw e;
-      if (isJoinCodeCollision(e)) continue;
-      throw e instanceof Error
-        ? e
-        : new Error("No se pudo guardar el espacio en la base de datos.");
+      if (isJoinCodeUniqueViolation(e)) continue;
+      throw e instanceof Error ? e : new Error("No se pudo guardar el espacio.");
     }
   }
 
@@ -112,21 +126,27 @@ export async function joinWorkspaceAction(formData: FormData): Promise<void> {
     throw new Error("Pega el código completo (p. ej. REG-AB12CD34).");
   }
 
-  const ws = await prisma.workspace.findUnique({ where: { joinCode: code } });
-  if (!ws) {
+  const ws = await dbQuery<{ id: string }>(
+    `select id from public.workspace where join_code = $1 limit 1`,
+    [code],
+  );
+  if (ws.length === 0) {
     throw new Error("Código no válido o ya no existe.");
   }
+  const workspaceId = ws[0].id;
 
-  await prisma.userWorkspace.upsert({
-    where: {
-      userEmail_workspaceId: { userEmail: email, workspaceId: ws.id },
-    },
-    create: { userEmail: email, workspaceId: ws.id, role: "member" },
-    update: {},
-  });
+  await dbQuery(
+    `
+      insert into public.user_workspace (user_email, workspace_id, role)
+      values ($1, $2, 'member')
+      on conflict (user_email, workspace_id)
+      do update set role = excluded.role
+    `,
+    [email, workspaceId],
+  );
 
   const cookieStore = await cookies();
-  cookieStore.set(WORKSPACE_COOKIE, ws.id, cookieOptions());
+  cookieStore.set(WORKSPACE_COOKIE, workspaceId, cookieOptions());
   revalidatePath("/");
   redirect(next);
 }
@@ -145,15 +165,16 @@ export async function selectWorkspaceAction(formData: FormData): Promise<void> {
     throw new Error("Elige un espacio.");
   }
 
-  const member = await prisma.userWorkspace.findUnique({
-    where: {
-      userEmail_workspaceId: {
-        userEmail: email,
-        workspaceId,
-      },
-    },
-  });
-  if (!member) {
+  const member = await dbQuery<{ id: string }>(
+    `
+      select id
+      from public.user_workspace
+      where user_email = $1 and workspace_id = $2
+      limit 1
+    `,
+    [email, workspaceId],
+  );
+  if (member.length === 0) {
     throw new Error("No perteneces a ese espacio.");
   }
 

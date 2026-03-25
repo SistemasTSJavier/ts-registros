@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 
 import { envTrim } from "@/lib/google-env";
 import { loadGoogleIntegrationState } from "@/lib/google-integration-db";
-import { prisma } from "@/lib/prisma";
+import { dbQuery } from "@/lib/db";
 
 export const WORKSPACE_COOKIE = "registros_workspace_id";
 
@@ -19,24 +19,33 @@ export async function getResolvedWorkspaceForUserEmail(
   if (!wsId) return null;
 
   try {
-    const member = await prisma.userWorkspace.findUnique({
-      where: {
-        userEmail_workspaceId: {
-          userEmail: email.toLowerCase(),
-          workspaceId: wsId,
-        },
-      },
-    });
-    if (!member) return null;
+    const row = await dbQuery<{
+      workspace_id: string;
+      drive_folder_id: string;
+      sheets_spreadsheet_id: string;
+      sheets_sheet_name: string;
+    }>(
+      `
+        select
+          w.id as workspace_id,
+          w.drive_folder_id,
+          w.sheets_spreadsheet_id,
+          w.sheets_sheet_name
+        from public.user_workspace uw
+        join public.workspace w on w.id = uw.workspace_id
+        where uw.user_email = $1 and uw.workspace_id = $2
+        limit 1
+      `,
+      [email.toLowerCase(), wsId],
+    );
 
-    const ws = await prisma.workspace.findUnique({ where: { id: wsId } });
-    if (!ws) return null;
-
+    if (row.length === 0) return null;
+    const ws = row[0];
     return {
-      workspaceId: ws.id,
-      driveFolderId: ws.driveFolderId,
-      sheetsSpreadsheetId: ws.sheetsSpreadsheetId,
-      sheetsSheetName: ws.sheetsSheetName,
+      workspaceId: ws.workspace_id,
+      driveFolderId: ws.drive_folder_id,
+      sheetsSpreadsheetId: ws.sheets_spreadsheet_id,
+      sheetsSheetName: ws.sheets_sheet_name,
     };
   } catch {
     return null;
@@ -52,14 +61,24 @@ export async function getDefaultWorkspaceForPublicApi(): Promise<{
   try {
     const explicit = envTrim("PUBLIC_WORKSPACE_ID");
     if (explicit) {
-      const ws = await prisma.workspace.findUnique({
-        where: { id: explicit },
-      });
-      if (ws) {
+      const ws = await dbQuery<{
+        drive_folder_id: string;
+        sheets_spreadsheet_id: string;
+        sheets_sheet_name: string;
+      }>(
+        `
+          select drive_folder_id, sheets_spreadsheet_id, sheets_sheet_name
+          from public.workspace
+          where id = $1
+          limit 1
+        `,
+        [explicit],
+      );
+      if (ws[0]) {
         return {
-          driveFolderId: ws.driveFolderId,
-          sheetsSpreadsheetId: ws.sheetsSpreadsheetId,
-          sheetsSheetName: ws.sheetsSheetName,
+          driveFolderId: ws[0].drive_folder_id,
+          sheetsSpreadsheetId: ws[0].sheets_spreadsheet_id,
+          sheetsSheetName: ws[0].sheets_sheet_name,
         };
       }
       throw new Error(
@@ -67,16 +86,28 @@ export async function getDefaultWorkspaceForPublicApi(): Promise<{
       );
     }
 
-    const count = await prisma.workspace.count();
+    const countRow = await dbQuery<{ count: number }>(
+      `select count(*)::int as count from public.workspace`,
+    );
+    const count = countRow[0]?.count ?? 0;
     if (count === 1) {
-      const ws = await prisma.workspace.findFirst({
-        orderBy: { createdAt: "asc" },
-      });
-      if (ws) {
+      const ws = await dbQuery<{
+        drive_folder_id: string;
+        sheets_spreadsheet_id: string;
+        sheets_sheet_name: string;
+      }>(
+        `
+          select drive_folder_id, sheets_spreadsheet_id, sheets_sheet_name
+          from public.workspace
+          order by created_at asc
+          limit 1
+        `,
+      );
+      if (ws[0]) {
         return {
-          driveFolderId: ws.driveFolderId,
-          sheetsSpreadsheetId: ws.sheetsSpreadsheetId,
-          sheetsSheetName: ws.sheetsSheetName,
+          driveFolderId: ws[0].drive_folder_id,
+          sheetsSpreadsheetId: ws[0].sheets_spreadsheet_id,
+          sheetsSheetName: ws[0].sheets_sheet_name,
         };
       }
     }
@@ -123,9 +154,15 @@ export async function hasLegacyGoogleIntegration(): Promise<boolean> {
 
 export async function userWorkspaceCount(email: string): Promise<number> {
   try {
-    return await prisma.userWorkspace.count({
-      where: { userEmail: email.toLowerCase() },
-    });
+    const r = await dbQuery<{ count: number }>(
+      `
+        select count(*)::int as count
+        from public.user_workspace
+        where user_email = $1
+      `,
+      [email.toLowerCase()],
+    );
+    return r[0]?.count ?? 0;
   } catch {
     return 0;
   }

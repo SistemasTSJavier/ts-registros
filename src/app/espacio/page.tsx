@@ -8,7 +8,7 @@ import {
 } from "@/actions/workspace-actions";
 import { auth } from "@/auth";
 import { envTrim } from "@/lib/google-env";
-import { prisma } from "@/lib/prisma";
+import { dbQuery } from "@/lib/db";
 import {
   getResolvedWorkspaceForUserEmail,
   hasLegacyGoogleIntegration,
@@ -40,21 +40,42 @@ export default async function EspacioPage({
     redirect(next);
   }
 
-  let memberships: Awaited<
-    ReturnType<typeof prisma.userWorkspace.findMany<{ include: { workspace: true } }>>
-  > = [];
+  type MembershipWithWorkspace = {
+    workspaceId: string;
+    role: string;
+    workspace: { joinCode: string };
+  };
+  let memberships: MembershipWithWorkspace[] = [];
   let dbError: string | null = null;
   try {
-    memberships = await prisma.userWorkspace.findMany({
-      where: { userEmail: email },
-      include: { workspace: true },
-      orderBy: { createdAt: "asc" },
-    });
+    const rows = await dbQuery<{
+      workspaceId: string;
+      role: string;
+      joinCode: string;
+    }>(
+      `
+        select
+          uw.workspace_id as "workspaceId",
+          uw.role as role,
+          w.join_code as "joinCode"
+        from public.user_workspace uw
+        join public.workspace w on w.id = uw.workspace_id
+        where uw.user_email = $1
+        order by uw.created_at asc
+      `,
+      [email],
+    );
+
+    memberships = rows.map((r) => ({
+      workspaceId: r.workspaceId,
+      role: r.role,
+      workspace: { joinCode: r.joinCode },
+    }));
   } catch (e) {
     dbError =
       e instanceof Error
         ? e.message
-        : "No se pudo leer la base de datos (¿tablas creadas con prisma migrate deploy?).";
+        : "No se pudo leer la base de datos (¿tablas creadas en Supabase?).";
   }
 
   const saEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
@@ -82,10 +103,8 @@ export default async function EspacioPage({
               DATABASE_URL
             </code>{" "}
             apunte a Supabase y que hayas aplicado el esquema (desde tu PC, con
-            la misma URL:{" "}
-            <code className="text-xs">npx prisma migrate deploy</code> o{" "}
-            <code className="text-xs">npx prisma db push</code>
-            ).
+            la misma URL: crea las tablas manuales en Supabase y verifica que
+            existen `workspace`, `user_workspace` y `google_integration_state`).
           </p>
           <p className="mt-2 font-mono text-xs opacity-90">{dbError}</p>
         </div>
