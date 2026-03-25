@@ -25,53 +25,57 @@ export default async function Home() {
     Boolean(session?.user) && !legacyGoogle && !workspaceActive;
 
   return (
-    <div className="flex min-h-full flex-1 flex-col items-center justify-center bg-zinc-50 px-6 py-16 font-sans dark:bg-zinc-950">
-      <div className="w-full max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Registro de visitas
-        </h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Entradas, salidas y citas programadas.
-        </p>
+    <div className="flex min-h-full flex-1 flex-col items-center justify-center bg-gradient-to-b from-slate-50 via-white to-slate-100/90 px-6 py-16 dark:from-zinc-950 dark:via-zinc-950 dark:to-zinc-900">
+      <div className="w-full max-w-md">
+        <div className="text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-500">
+            Control de accesos
+          </p>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 dark:text-zinc-50">
+            Registro de visitas
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+            Citas programadas, entradas sin cita y seguimiento para recepción.
+          </p>
+        </div>
 
         {session?.user ? (
-          <div className="mt-10 flex flex-col items-stretch gap-6">
-            <div className="rounded-xl border border-zinc-200 bg-white p-5 text-left shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Sesión
+          <div className="mt-10 flex flex-col items-stretch gap-5">
+            <div className="rounded-2xl border border-slate-200/90 bg-white p-6 text-left shadow-sm ring-1 ring-slate-900/5 dark:border-zinc-800 dark:bg-zinc-900/80 dark:ring-white/5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-500">
+                Sesión activa
               </p>
-              <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+              <p className="mt-2 text-sm font-medium text-slate-900 dark:text-zinc-100">
                 {session.user.email ?? session.user.name}
               </p>
               <Link
                 href="/espacio?next=/"
-                className="mt-2 block text-center text-xs text-zinc-500 underline underline-offset-2 dark:text-zinc-400"
+                className="mt-3 inline-flex text-sm font-medium text-slate-700 underline-offset-4 hover:underline dark:text-zinc-300"
               >
-                Espacio de trabajo (carpeta / código)
+                Espacio de trabajo y hoja de Google
               </Link>
-              <div className="mt-4 flex justify-center">
+              <div className="mt-5 flex justify-center border-t border-slate-100 pt-5 dark:border-zinc-800">
                 <SignOutButton />
               </div>
             </div>
 
             {needsEspacio ? (
-              <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-left text-sm text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-100">
-                <p className="font-medium">Configura tu espacio de trabajo</p>
-                <p className="mt-1 text-sky-900/80 dark:text-sky-200/90">
-                  Crea la carpeta y la hoja en Google o únete con un código de
-                  invitación.
+              <div className="rounded-2xl border border-sky-200/80 bg-sky-50/90 p-5 text-left text-sm text-sky-950 shadow-sm dark:border-sky-900/40 dark:bg-sky-950/35 dark:text-sky-100">
+                <p className="font-semibold">Configura tu espacio</p>
+                <p className="mt-1 leading-relaxed text-sky-900/85 dark:text-sky-200/90">
+                  Crea una hoja nueva, enlaza una existente o únete con código.
                 </p>
                 <Link
                   href="/espacio?next=/"
-                  className="mt-3 inline-block rounded-full bg-sky-900 px-4 py-2 text-xs font-medium text-white dark:bg-sky-200 dark:text-sky-950"
+                  className="mt-4 inline-flex rounded-xl bg-sky-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm dark:bg-sky-200 dark:text-sky-950"
                 >
-                  Ir a espacio de trabajo
+                  Ir a configuración
                 </Link>
               </div>
             ) : null}
 
-            <div className="text-left">
-              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-500">
                 Paneles
               </p>
               <ul className="mt-3 flex flex-col gap-2">
@@ -79,42 +83,42 @@ export default async function Home() {
                   <li>
                     <Link
                       href="/visitas"
-                      className="block rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
+                      className="block rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-900 shadow-sm transition hover:border-slate-300 hover:shadow dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
                     >
                       Panel oficial — visitas y escaneo
                     </Link>
                   </li>
                 ) : (
-                  <li className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                  <li className="rounded-xl border border-amber-200/90 bg-amber-50 px-4 py-3.5 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
                     Tu correo no está en{" "}
-                    <code className="rounded bg-amber-100/80 px-1 text-xs dark:bg-amber-900/80">
+                    <code className="rounded-md bg-amber-100/90 px-1.5 py-0.5 text-xs dark:bg-amber-900/80">
                       OFFICER_EMAILS
                     </code>
-                    . Pide acceso al administrador o revisa las variables en Vercel.
+                    . Pide acceso al administrador.
                   </li>
                 )}
                 {canAdmin ? (
                   <li>
                     <Link
                       href="/admin"
-                      className="block rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
+                      className="block rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-900 shadow-sm transition hover:border-slate-300 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
                     >
-                      Panel administración
+                      Administración
                     </Link>
                   </li>
                 ) : null}
               </ul>
             </div>
 
-            <div className="text-left">
-              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Registro público
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-500">
+                Formularios
               </p>
               <Link
                 href="/registro"
-                className="mt-3 block rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
+                className="mt-3 block rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-900 shadow-sm transition hover:border-slate-300 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
               >
-                Formularios de visita (programada o sin cita)
+                Registrar visita (requiere sesión)
               </Link>
             </div>
           </div>
@@ -122,7 +126,7 @@ export default async function Home() {
           <form action={signInWithGoogle} className="mt-10">
             <button
               type="submit"
-              className="w-full rounded-full bg-zinc-900 px-8 py-3 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+              className="w-full rounded-xl bg-slate-900 px-8 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
             >
               Iniciar sesión con Google
             </button>

@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 
-import { envTrim } from "@/lib/google-env";
 import { loadGoogleIntegrationState } from "@/lib/google-integration-db";
 import { dbQuery } from "@/lib/db";
 
@@ -50,97 +49,6 @@ export async function getResolvedWorkspaceForUserEmail(
   } catch {
     return null;
   }
-}
-
-/** Registro público: un solo Workspace, o PUBLIC_WORKSPACE_ID si hay varios, o legado GoogleIntegrationState. */
-export async function getDefaultWorkspaceForPublicApi(): Promise<{
-  driveFolderId: string;
-  sheetsSpreadsheetId: string;
-  sheetsSheetName: string;
-} | null> {
-  try {
-    const explicit = envTrim("PUBLIC_WORKSPACE_ID");
-    if (explicit) {
-      const ws = await dbQuery<{
-        drive_folder_id: string;
-        sheets_spreadsheet_id: string;
-        sheets_sheet_name: string;
-      }>(
-        `
-          select drive_folder_id, sheets_spreadsheet_id, sheets_sheet_name
-          from public.workspace
-          where id = $1
-          limit 1
-        `,
-        [explicit],
-      );
-      if (ws[0]) {
-        return {
-          driveFolderId: ws[0].drive_folder_id,
-          sheetsSpreadsheetId: ws[0].sheets_spreadsheet_id,
-          sheetsSheetName: ws[0].sheets_sheet_name,
-        };
-      }
-      throw new Error(
-        "PUBLIC_WORKSPACE_ID no coincide con ningún espacio de trabajo.",
-      );
-    }
-
-    const countRow = await dbQuery<{ count: number }>(
-      `select count(*)::int as count from public.workspace`,
-    );
-    const count = countRow[0]?.count ?? 0;
-    if (count === 1) {
-      const ws = await dbQuery<{
-        drive_folder_id: string;
-        sheets_spreadsheet_id: string;
-        sheets_sheet_name: string;
-      }>(
-        `
-          select drive_folder_id, sheets_spreadsheet_id, sheets_sheet_name
-          from public.workspace
-          order by created_at asc
-          limit 1
-        `,
-      );
-      if (ws[0]) {
-        return {
-          driveFolderId: ws[0].drive_folder_id,
-          sheetsSpreadsheetId: ws[0].sheets_spreadsheet_id,
-          sheetsSheetName: ws[0].sheets_sheet_name,
-        };
-      }
-    }
-
-    if (count > 1) {
-      throw new Error(
-        "Hay varios espacios de trabajo. Define PUBLIC_WORKSPACE_ID en el servidor con el id del espacio para formularios públicos.",
-      );
-    }
-  } catch (e) {
-    if (
-      e instanceof Error &&
-      (e.message.includes("PUBLIC_WORKSPACE") ||
-        e.message.includes("espacios de trabajo"))
-    ) {
-      throw e;
-    }
-  }
-
-  const row = await loadGoogleIntegrationState();
-  if (
-    row?.driveFolderId &&
-    row?.sheetsSpreadsheetId &&
-    row?.sheetsSheetName
-  ) {
-    return {
-      driveFolderId: row.driveFolderId,
-      sheetsSpreadsheetId: row.sheetsSpreadsheetId,
-      sheetsSheetName: row.sheetsSheetName,
-    };
-  }
-
-  return null;
 }
 
 export async function hasLegacyGoogleIntegration(): Promise<boolean> {

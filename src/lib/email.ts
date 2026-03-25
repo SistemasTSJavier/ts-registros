@@ -1,39 +1,29 @@
-import nodemailer from "nodemailer";
-
-export function isSmtpConfigured(): boolean {
-  return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
-}
+import {
+  getAuthJwtFromRequest,
+  sendMailHtmlViaGmailWithJwt,
+} from "@/lib/gmail-oauth-send";
 
 export async function sendMailHtml(params: {
   to: string | string[];
   subject: string;
   html: string;
 }): Promise<void> {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!user || !pass) {
+  const jwt = await getAuthJwtFromRequest();
+  const hasGmailOAuth =
+    Boolean(jwt?.email) &&
+    Boolean(jwt?.googleRefreshToken || jwt?.googleAccessToken);
+
+  if (!jwt?.email) {
     throw new Error(
-      "Falta SMTP: define SMTP_USER y SMTP_PASS (contraseña de aplicación de Gmail u otro SMTP).",
+      "Debes iniciar sesión con Google para enviar correos (solo desde tu cuenta Gmail).",
     );
   }
 
-  const host = process.env.SMTP_HOST ?? "smtp.gmail.com";
-  const port = Number(process.env.SMTP_PORT ?? 587);
-  const secure = port === 465;
+  if (!hasGmailOAuth) {
+    throw new Error(
+      "Tu sesión no tiene permiso de envío de Gmail. Cierra sesión y vuelve a entrar para conceder el permiso.",
+    );
+  }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-  });
-
-  const from = process.env.SMTP_FROM ?? user;
-
-  await transporter.sendMail({
-    from,
-    to: params.to,
-    subject: params.subject,
-    html: params.html,
-  });
+  await sendMailHtmlViaGmailWithJwt(jwt, params);
 }

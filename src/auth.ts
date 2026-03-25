@@ -25,10 +25,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: googleClientId,
       clientSecret: googleClientSecret,
+      authorization: {
+        params: {
+          scope:
+            "openid email profile https://www.googleapis.com/auth/gmail.send",
+          access_type: "offline",
+          response_type: "code",
+        },
+      },
     }),
   ],
   // Sin BD: la app usa Google Sheets/Drive como “BD” de negocio.
   // Para Auth, usamos JWT para no requerir Prisma/Postgres.
   session: { strategy: "jwt" },
   trustHost: true,
+  callbacks: {
+    async jwt({ token, account }) {
+      if (account) {
+        if (typeof account.access_token === "string") {
+          token.googleAccessToken = account.access_token;
+        }
+        if (typeof account.refresh_token === "string") {
+          token.googleRefreshToken = account.refresh_token;
+        }
+        if (typeof account.expires_at === "number") {
+          token.googleExpiresAt = account.expires_at;
+        } else if (typeof account.expires_in === "number") {
+          token.googleExpiresAt =
+            Math.floor(Date.now() / 1000) + account.expires_in;
+        }
+      }
+      return token;
+    },
+  },
 });

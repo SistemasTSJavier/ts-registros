@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import {
   createWorkspaceAction,
+  createWorkspaceFromGoogleRefAction,
   joinWorkspaceAction,
   selectWorkspaceAction,
 } from "@/actions/workspace-actions";
@@ -15,6 +16,15 @@ import {
 } from "@/lib/workspace-resolver";
 
 export const dynamic = "force-dynamic";
+
+const cardClass =
+  "rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm ring-1 ring-slate-900/5 dark:border-zinc-800 dark:bg-zinc-900/80 dark:ring-white/5";
+const btnPrimary =
+  "inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white";
+const btnSecondary =
+  "inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-600";
+const inputClass =
+  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none ring-slate-400/30 placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-500";
 
 export default async function EspacioPage({
   searchParams,
@@ -84,131 +94,160 @@ export default async function EspacioPage({
   const uiError = createError ?? dbError;
 
   return (
-    <div className="mx-auto min-h-full max-w-lg px-4 py-12 font-sans">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-        Espacio de trabajo
-      </h1>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        Un espacio agrupa una carpeta en Google Drive y una hoja de cálculo. Los
-        oficiales que unan el mismo código comparten los mismos registros. Cada
-        instalación de la app es independiente de otras.
-      </p>
-
-      {uiError ? (
-        <div
-          className="mt-8 rounded-xl border border-red-200 bg-red-50 p-4 text-left text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
-          role="alert"
-        >
-          <p className="font-medium">No se pudo completar la operación</p>
-          <p className="mt-2 font-mono text-xs opacity-90 whitespace-pre-wrap break-words">
-            {uiError}
+    <div className="min-h-full bg-gradient-to-b from-slate-50 via-white to-slate-100/80 dark:from-zinc-950 dark:via-zinc-950 dark:to-zinc-900">
+      <div className="mx-auto max-w-lg px-4 py-12 sm:px-6">
+        <header className="mb-10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-500">
+            Configuración
           </p>
-        </div>
-      ) : null}
-
-      {!uiError && memberships.length > 0 ? (
-        <section className="mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Ya perteneces a un espacio
-          </h2>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Elige cuál usar en esta sesión (se guarda en tu navegador).
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-zinc-50">
+            Espacio de trabajo
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+            Cada cuenta puede tener su propia hoja de cálculo. Para compartir la
+            misma hoja con otras personas, enlaza el ID de la hoja o de la
+            carpeta en Drive (compartidos con la cuenta de servicio del
+            servidor).
           </p>
-          <ul className="mt-4 flex flex-col gap-2">
-            {memberships.map((m) => (
-              <li key={m.workspaceId}>
-                <form action={selectWorkspaceAction}>
-                  <input type="hidden" name="next" value={next} />
-                  <input
-                    type="hidden"
-                    name="workspaceId"
-                    value={m.workspaceId}
-                  />
-                  <button
-                    type="submit"
-                    className="w-full rounded-lg border border-zinc-200 px-4 py-3 text-left text-sm font-medium text-zinc-900 transition hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-50 dark:hover:border-zinc-600"
-                  >
-                    Código {m.workspace.joinCode}
-                    {m.role === "owner" ? (
-                      <span className="ml-2 text-xs text-zinc-500">
-                        (creador)
-                      </span>
-                    ) : null}
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+        </header>
 
-      <section
-        className={`mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${uiError ? "opacity-50 pointer-events-none" : ""}`}
-        aria-hidden={Boolean(uiError)}
-      >
-        <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-          Crear nuevo espacio
-        </h2>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          La app crea automáticamente una carpeta y una hoja en el Drive de la
-          cuenta de servicio del servidor. Recibirás un{" "}
-          <strong>código de acceso</strong> para invitar a otras personas.
-        </p>
-        <form action={createWorkspaceAction} className="mt-4">
-          <input type="hidden" name="next" value={next} />
-          <button
-            type="submit"
-            className="w-full rounded-full bg-zinc-900 px-4 py-3 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+        {uiError ? (
+          <div
+            className="mb-8 rounded-2xl border border-red-200/90 bg-red-50 px-5 py-4 text-left text-sm text-red-950 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100"
+            role="alert"
           >
-            Generar carpeta y hoja nuevas
-          </button>
-        </form>
-      </section>
-
-      <section
-        className={`mt-8 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${dbError ? "opacity-50 pointer-events-none" : ""}`}
-        aria-hidden={Boolean(dbError)}
-      >
-        <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-          Unirme con código
-        </h2>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Pide el código (p. ej. REG-AB12CD34) a quien creó el espacio. Con
-          eso vinculas tu cuenta al mismo registro;{" "}
-          <strong>no necesitas permisos extra en Drive</strong> para usar el
-          panel (la app usa la cuenta de servicio).
-        </p>
-        {saEmail ? (
-          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-            Si en el futuro enlazas una carpeta tuya manualmente, compártela con:{" "}
-            <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
-              {saEmail}
-            </code>{" "}
-            como Editor.
-          </p>
+            <p className="font-semibold">No se pudo completar la operación</p>
+            <p className="mt-2 font-mono text-xs opacity-90 whitespace-pre-wrap break-words">
+              {uiError}
+            </p>
+          </div>
         ) : null}
-        <form action={joinWorkspaceAction} className="mt-4 flex flex-col gap-3">
-          <input type="hidden" name="next" value={next} />
-          <input
-            name="code"
-            placeholder="REG-XXXXXXXX"
-            autoComplete="off"
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
-          />
-          <button
-            type="submit"
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium dark:border-zinc-600"
-          >
-            Unirme
-          </button>
-        </form>
-      </section>
 
-      <p className="mt-10 text-center text-sm">
-        <Link href="/" className="text-zinc-600 underline dark:text-zinc-400">
-          Volver al inicio
-        </Link>
-      </p>
+        {!uiError && memberships.length > 0 ? (
+          <section className={`mb-8 ${cardClass}`}>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+              Tus espacios
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+              Elige cuál usar en esta sesión (se guarda en tu navegador).
+            </p>
+            <ul className="mt-5 flex flex-col gap-2">
+              {memberships.map((m) => (
+                <li key={m.workspaceId}>
+                  <form action={selectWorkspaceAction}>
+                    <input type="hidden" name="next" value={next} />
+                    <input
+                      type="hidden"
+                      name="workspaceId"
+                      value={m.workspaceId}
+                    />
+                    <button type="submit" className={btnSecondary}>
+                      <span className="text-left">
+                        Código {m.workspace.joinCode}
+                        {m.role === "owner" ? (
+                          <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-500">
+                            (creador)
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <section
+          className={`mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
+          aria-hidden={Boolean(uiError)}
+        >
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            Crear hoja nueva
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+            Se genera una carpeta y una hoja solo para esta cuenta de
+            aplicación. Recibirás un código para invitar a otras personas al
+            mismo espacio.
+          </p>
+          <form action={createWorkspaceAction} className="mt-5">
+            <input type="hidden" name="next" value={next} />
+            <button type="submit" className={btnPrimary}>
+              Generar carpeta y hoja nuevas
+            </button>
+          </form>
+        </section>
+
+        <section
+          className={`mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
+          aria-hidden={Boolean(uiError)}
+        >
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            Usar una hoja o carpeta de Drive
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+            Pega el enlace de una hoja de Google Sheets existente, o el de una
+            carpeta (se creará una hoja nueva dentro). La cuenta de servicio
+            debe tener acceso como editor.
+          </p>
+          <form action={createWorkspaceFromGoogleRefAction} className="mt-5 space-y-3">
+            <input type="hidden" name="next" value={next} />
+            <input
+              name="googleRef"
+              type="text"
+              placeholder="Enlace o ID de hoja / carpeta de Google Drive"
+              autoComplete="off"
+              className={inputClass}
+            />
+            <button type="submit" className={btnSecondary}>
+              Crear espacio desde este enlace
+            </button>
+          </form>
+        </section>
+
+        <section
+          className={`${cardClass} ${dbError ? "pointer-events-none opacity-50" : ""}`}
+          aria-hidden={Boolean(dbError)}
+        >
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            Unirme con código
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+            Si otra persona ya creó un espacio, pide el código (p. ej.{" "}
+            REG-AB12CD34) para usar la misma hoja.
+          </p>
+          {saEmail ? (
+            <p className="mt-2 text-xs text-slate-500 dark:text-zinc-500">
+              Comparte carpetas o hojas con{" "}
+              <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] dark:bg-zinc-800">
+                {saEmail}
+              </code>{" "}
+              como editor.
+            </p>
+          ) : null}
+          <form action={joinWorkspaceAction} className="mt-5 flex flex-col gap-3">
+            <input type="hidden" name="next" value={next} />
+            <input
+              name="code"
+              placeholder="REG-XXXXXXXX"
+              autoComplete="off"
+              className={inputClass}
+            />
+            <button type="submit" className={btnSecondary}>
+              Unirme
+            </button>
+          </form>
+        </section>
+
+        <p className="mt-10 text-center text-sm text-slate-600 dark:text-zinc-500">
+          <Link
+            href="/"
+            className="font-medium text-slate-900 underline underline-offset-4 hover:no-underline dark:text-zinc-100"
+          >
+            Volver al inicio
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

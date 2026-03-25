@@ -20,15 +20,17 @@ export function WalkInDecisionButtons({ token }: { token: string }) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-4">
       {error ? (
-        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+          {error}
+        </p>
       ) : null}
-      <div className="flex flex-wrap justify-center gap-3">
+      <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-center">
         <button
           disabled={pending}
           type="button"
-          className="rounded-full bg-emerald-700 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+          className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 disabled:opacity-50"
           onClick={() => run(approveWalkInToken)}
         >
           Aprobar entrada
@@ -36,7 +38,7 @@ export function WalkInDecisionButtons({ token }: { token: string }) {
         <button
           disabled={pending}
           type="button"
-          className="rounded-full border border-red-400 px-6 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-950/40"
+          className="rounded-xl border border-red-300 bg-white px-6 py-3 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:bg-zinc-900 dark:text-red-300 dark:hover:bg-red-950/40"
           onClick={() => run(denyWalkInToken)}
         >
           Denegar entrada

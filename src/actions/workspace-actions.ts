@@ -7,7 +7,10 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
-import { createFreshWorkspaceResources } from "@/lib/google-setup";
+import {
+  createFreshWorkspaceResources,
+  resolveWorkspaceStorageFromGoogleRef,
+} from "@/lib/google-setup";
 import { dbQuery, dbTx } from "@/lib/db";
 import { WORKSPACE_COOKIE } from "@/lib/workspace-resolver";
 
@@ -104,6 +107,84 @@ export async function createWorkspaceAction(formData: FormData): Promise<void> {
       if (isJoinCodeUniqueViolation(e)) continue;
       const msg = e instanceof Error ? e.message : "No se pudo guardar el espacio.";
       redirect(`/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`);
+    }
+  }
+
+  throw new Error(
+    "No se pudo asignar un código único al espacio. Reintenta en unos segundos.",
+  );
+}
+
+export async function createWorkspaceFromGoogleRefAction(
+  formData: FormData,
+): Promise<void> {
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase();
+  if (!email) {
+    throw new Error("Inicia sesión primero.");
+  }
+
+  const next = safeNext(String(formData.get("next") ?? "/"));
+  const raw = String(formData.get("googleRef") ?? "").trim();
+
+  let storage;
+  try {
+    storage = await resolveWorkspaceStorageFromGoogleRef(raw);
+  } catch (e) {
+    const msg =
+      e instanceof Error
+        ? e.message
+        : "No se pudo validar el recurso en Google.";
+    redirect(
+      `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
+    );
+  }
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const joinCode = generateJoinCode();
+    try {
+      const ws = await dbTx(async (client) => {
+        const createdWsRes = await client.query<
+          { id: string; join_code: string }
+        >(
+          `
+            insert into public.workspace
+              (join_code, drive_folder_id, sheets_spreadsheet_id, sheets_sheet_name, created_by_email)
+            values ($1, $2, $3, $4, $5)
+            returning id, join_code
+          `,
+          [
+            joinCode,
+            storage.driveFolderId,
+            storage.sheetsSpreadsheetId,
+            storage.sheetsSheetName,
+            email,
+          ],
+        );
+        const createdWs = createdWsRes.rows[0];
+
+        await client.query(
+          `
+            insert into public.user_workspace (user_email, workspace_id, role)
+            values ($1, $2, 'owner')
+          `,
+          [email, createdWs.id],
+        );
+
+        return createdWs;
+      });
+
+      const cookieStore = await cookies();
+      cookieStore.set(WORKSPACE_COOKIE, ws.id, cookieOptions());
+      revalidatePath("/");
+      redirect("/espacio/exito?c=" + encodeURIComponent(ws.join_code));
+    } catch (e) {
+      if (isRedirectError(e)) throw e;
+      if (isJoinCodeUniqueViolation(e)) continue;
+      const msg = e instanceof Error ? e.message : "No se pudo guardar el espacio.";
+      redirect(
+        `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
+      );
     }
   }
 

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { auth } from "@/auth";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { formatGoogleApiErrorForUser } from "@/lib/google-user-error";
 import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
@@ -31,6 +32,14 @@ export async function createScheduledVisit(
   formData: FormData,
 ): Promise<ScheduledVisitActionState> {
   try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return {
+        ok: false,
+        error: "Inicia sesión con Google para registrar visitas y enviar correos desde tu cuenta.",
+      };
+    }
+
     const visitorFullName = String(formData.get("visitorFullName") ?? "").trim();
     const visitorCompany = String(formData.get("visitorCompany") ?? "").trim();
     const subject = String(formData.get("subject") ?? "").trim();

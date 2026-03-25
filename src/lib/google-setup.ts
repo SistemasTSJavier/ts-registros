@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { google } from "googleapis";
 import type { JWT } from "google-auth-library";
 
@@ -6,14 +7,15 @@ import {
   GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
   prepareGoogleServiceAccountPrivateKey,
 } from "@/lib/google-env";
+import { extractGoogleDriveFileId } from "@/lib/google-drive-parse";
 import { auth } from "@/auth";
 import {
   loadGoogleIntegrationState,
   saveGoogleIntegrationState,
 } from "@/lib/google-integration-db";
 import {
-  getDefaultWorkspaceForPublicApi,
   getResolvedWorkspaceForUserEmail,
+  hasLegacyGoogleIntegration,
 } from "@/lib/workspace-resolver";
 
 const COLUMNS = [
@@ -330,6 +332,16 @@ async function ensureSpreadsheet(
   return { spreadsheetId, sheetName: chosen };
 }
 
+function isLikelyGooglePermissionError(err: unknown): boolean {
+  const s = formatGoogleApiError(err).toLowerCase();
+  return (
+    s.includes("permission") ||
+    s.includes("403") ||
+    s.includes("the caller does not have permission") ||
+    s.includes("forbidden")
+  );
+}
+
 /** Usa un spreadsheet ya creado (ID en env). Evita buscar por título y escribe encabezados. */
 export async function ensureSpreadsheetByEnvId(
   auth: JWT,
@@ -337,10 +349,27 @@ export async function ensureSpreadsheetByEnvId(
   preferredSheetName: string,
 ): Promise<{ sheetName: string }> {
   const sheets = google.sheets({ version: "v4", auth });
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets.properties.title",
-  });
+  const sa = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
+
+  let meta;
+  try {
+    meta = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets.properties.title",
+    });
+  } catch (e) {
+    if (isLikelyGooglePermissionError(e)) {
+      throw new Error(
+        `No se puede leer la hoja de cálculo (ID ${spreadsheetId}). ` +
+          `Comparte ese archivo de Google Sheets con la cuenta de servicio` +
+          (sa ? ` (${sa})` : "") +
+          ` como Editor. Si está en un Drive compartido, añade también esa cuenta como miembro del Drive. ` +
+          `Origen: ${formatGoogleApiError(e)}`,
+      );
+    }
+    throw new Error(`No se pudo abrir la hoja de cálculo: ${formatGoogleApiError(e)}`);
+  }
+
   const titles = meta.data.sheets
     ?.map((s) => s.properties?.title)
     .filter(Boolean) as string[];
@@ -354,12 +383,27 @@ export async function ensureSpreadsheetByEnvId(
   }
 
   const headerRange = `${chosen}!A1:AA1`;
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: headerRange,
-    valueInputOption: "RAW",
-    requestBody: { values: [Array.from(COLUMNS)] },
-  });
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: headerRange,
+      valueInputOption: "RAW",
+      requestBody: { values: [Array.from(COLUMNS)] },
+    });
+  } catch (e) {
+    if (isLikelyGooglePermissionError(e)) {
+      throw new Error(
+        `No se puede escribir encabezados en la hoja (ID ${spreadsheetId}, pestaña «${chosen}»). ` +
+          `Comparte el archivo con la cuenta de servicio` +
+          (sa ? ` (${sa})` : "") +
+          ` como Editor (o como Editor de contenido en Drive compartido). ` +
+          `Origen: ${formatGoogleApiError(e)}`,
+      );
+    }
+    throw new Error(
+      `No se pudo escribir encabezados en la hoja (Sheets). ${formatGoogleApiError(e)}`,
+    );
+  }
 
   return { sheetName: chosen };
 }
@@ -402,6 +446,84 @@ export type GoogleSheetsStorage = {
   sheetsSpreadsheetId: string;
   sheetsSheetName: string;
 };
+
+/**
+ * Valida con la cuenta de servicio una hoja existente o una carpeta (crea hoja nueva dentro).
+ * La carpeta o la hoja deben estar compartidas con la cuenta de servicio como Editor.
+ */
+export async function resolveWorkspaceStorageFromGoogleRef(
+  rawInput: string,
+): Promise<GoogleSheetsStorage> {
+  const id = extractGoogleDriveFileId(rawInput);
+  if (!id) {
+    throw new Error(
+      "Pega un enlace de Google Drive (hoja o carpeta) o el ID del archivo.",
+    );
+  }
+
+  const serviceAuth = getServiceAccountAuth();
+  if (!serviceAuth) {
+    throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
+  }
+
+  await serviceAuth.authorize();
+  const drive = google.drive({ version: "v3", auth: serviceAuth });
+
+  let meta;
+  try {
+    meta = await drive.files.get({
+      fileId: id,
+      fields: "id,mimeType,parents",
+      supportsAllDrives: true,
+    });
+  } catch (e) {
+    throw new Error(
+      `No se pudo leer el recurso en Drive (${id}). ${formatGoogleApiError(e)}`,
+    );
+  }
+
+  const mime = meta.data.mimeType;
+  const parents = meta.data.parents ?? [];
+  const fallbackParent = envTrim("GOOGLE_DRIVE_FOLDER_ID") || "";
+
+  if (mime === "application/vnd.google-apps.spreadsheet") {
+    const parentFolder = parents[0] ?? fallbackParent;
+    if (!parentFolder) {
+      throw new Error(
+        "No se pudo determinar la carpeta contenedora de la hoja. Comparte la hoja con la cuenta de servicio o usa una carpeta dentro de tu Drive.",
+      );
+    }
+    const preferred = defaultSheetName();
+    const { sheetName } = await ensureSpreadsheetByEnvId(
+      serviceAuth,
+      id,
+      preferred,
+    );
+    return {
+      driveFolderId: parentFolder,
+      sheetsSpreadsheetId: id,
+      sheetsSheetName: sheetName,
+    };
+  }
+
+  if (mime === "application/vnd.google-apps.folder") {
+    const suffix = randomBytes(4).toString("hex");
+    const sheets = await ensureSpreadsheet(
+      serviceAuth,
+      id,
+      `Registros-${suffix}`,
+    );
+    return {
+      driveFolderId: id,
+      sheetsSpreadsheetId: sheets.spreadsheetId,
+      sheetsSheetName: sheets.sheetName,
+    };
+  }
+
+  throw new Error(
+    "El enlace debe ser una hoja de cálculo de Google o una carpeta de Drive.",
+  );
+}
 
 /** Crea carpeta + hoja nuevas en el Drive de la cuenta de servicio (nombre único por sufijo). */
 export async function createFreshWorkspaceResources(
@@ -513,7 +635,8 @@ async function ensureGoogleDriveAndSheetsSetupLegacy(): Promise<GoogleSheetsStor
 }
 
 /**
- * Resuelve carpeta+hoja: espacio activo (cookie) → registro público (un solo Workspace o PUBLIC_WORKSPACE_ID) → legado env/BD.
+ * Resuelve carpeta+hoja: espacio activo (cookie + membresía) o integración legada (misma instalación).
+ * Requiere sesión y un espacio seleccionado, salvo legado sin workspaces.
  */
 export async function resolveGoogleSheetsStorage(): Promise<GoogleSheetsStorage> {
   const serviceAuth = getServiceAccountAuth();
@@ -523,38 +646,33 @@ export async function resolveGoogleSheetsStorage(): Promise<GoogleSheetsStorage>
 
   const session = await auth();
   const email = session?.user?.email?.toLowerCase() ?? null;
-
-  if (email) {
-    const ws = await getResolvedWorkspaceForUserEmail(email);
-    if (ws) {
-      const { sheetName } = await ensureSpreadsheetByEnvId(
-        serviceAuth,
-        ws.sheetsSpreadsheetId,
-        ws.sheetsSheetName,
-      );
-      return {
-        driveFolderId: ws.driveFolderId,
-        sheetsSpreadsheetId: ws.sheetsSpreadsheetId,
-        sheetsSheetName: sheetName,
-      };
-    }
+  if (!email) {
+    throw new Error(
+      "Inicia sesión con Google para usar los registros. Cada usuario trabaja sobre su espacio de trabajo configurado.",
+    );
   }
 
-  const pub = await getDefaultWorkspaceForPublicApi();
-  if (pub) {
+  const ws = await getResolvedWorkspaceForUserEmail(email);
+  if (ws) {
     const { sheetName } = await ensureSpreadsheetByEnvId(
       serviceAuth,
-      pub.sheetsSpreadsheetId,
-      pub.sheetsSheetName,
+      ws.sheetsSpreadsheetId,
+      ws.sheetsSheetName,
     );
     return {
-      driveFolderId: pub.driveFolderId,
-      sheetsSpreadsheetId: pub.sheetsSpreadsheetId,
+      driveFolderId: ws.driveFolderId,
+      sheetsSpreadsheetId: ws.sheetsSpreadsheetId,
       sheetsSheetName: sheetName,
     };
   }
 
-  return ensureGoogleDriveAndSheetsSetupLegacy();
+  if (await hasLegacyGoogleIntegration()) {
+    return ensureGoogleDriveAndSheetsSetupLegacy();
+  }
+
+  throw new Error(
+    "Configura tu espacio en /espacio: crea una hoja nueva, enlaza una hoja o carpeta de Drive, o únete con un código.",
+  );
 }
 
 export async function ensureGoogleDriveAndSheetsSetup(): Promise<GoogleSheetsStorage> {

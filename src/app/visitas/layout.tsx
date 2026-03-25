@@ -2,13 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import { SignOutButton } from "@/components/sign-out-button";
 import { getUserEmail, isOfficerEmail } from "@/lib/access";
 import { resolveGoogleSheetsStorage } from "@/lib/google-setup";
-import { SignOutButton } from "@/components/sign-out-button";
 import {
   getResolvedWorkspaceForUserEmail,
   hasLegacyGoogleIntegration,
 } from "@/lib/workspace-resolver";
+
+const navLink =
+  "rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100";
 
 export default async function VisitasLayout({
   children,
@@ -41,62 +44,45 @@ export default async function VisitasLayout({
   }
 
   return (
-    <div className="min-h-full flex-1 bg-zinc-50 px-4 py-10 dark:bg-zinc-950">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-zinc-200 pb-6 dark:border-zinc-800">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-              Panel oficial
-            </p>
-            <p className="text-sm text-zinc-700 dark:text-zinc-300">
-              {email ?? session.user.email ?? session.user.name}
-            </p>
+    <div className="min-h-full flex-1 bg-gradient-to-b from-slate-50 via-white to-slate-100/80 dark:from-zinc-950 dark:via-zinc-950 dark:to-zinc-900">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+        <header className="mb-10 rounded-2xl border border-slate-200/90 bg-white/80 p-5 shadow-sm ring-1 ring-slate-900/5 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/70 dark:ring-white/5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-500">
+                Panel oficial
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-900 dark:text-zinc-100">
+                {email ?? session.user.email ?? session.user.name}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <SignOutButton />
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/visitas"
-              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
+          <nav className="mt-5 flex flex-wrap gap-1 border-t border-slate-100 pt-5 dark:border-zinc-800">
+            <Link href="/visitas" className={navLink}>
               Resumen
             </Link>
-            <Link
-              href="/visitas/programadas"
-              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
+            <Link href="/visitas/programadas" className={navLink}>
               Programadas
             </Link>
-            <Link
-              href="/visitas/programadas/escaneo"
-              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
-              Escaneo cita
+            <Link href="/visitas/programadas/escaneo" className={navLink}>
+              Escaneo
             </Link>
-            <Link
-              href="/visitas/sin-programacion"
-              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
+            <Link href="/visitas/sin-programacion" className={navLink}>
               Sin cita
             </Link>
-            <Link
-              href="/espacio?next=/visitas"
-              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
+            <Link href="/espacio?next=/visitas" className={navLink}>
               Espacio
             </Link>
-            <Link
-              href="/"
-              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
+            <Link href="/" className={navLink}>
               Inicio
             </Link>
-            <Link
-              href="/admin"
-              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
+            <Link href="/admin" className={navLink}>
               Admin
             </Link>
-            <SignOutButton />
-          </div>
+          </nav>
         </header>
         {children}
       </div>

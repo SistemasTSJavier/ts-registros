@@ -19,7 +19,8 @@ export function formatGoogleApiErrorForUser(err: unknown): string {
       "Google rechazó el acceso (sin permiso). " +
       "En Google Cloud, confirma que las APIs «Google Drive» y «Google Sheets» están habilitadas en el proyecto de esa cuenta de servicio. " +
       shareHint +
-      "Si tienes más de un espacio de trabajo en la app, define PUBLIC_WORKSPACE_ID en Vercel con el id del espacio que deben usar los formularios públicos. " +
+      "Los datos se guardan en el espacio de trabajo que elijas en /espacio. " +
+      "Si la hoja está en un Drive compartido (Shared drive), la cuenta de servicio debe ser miembro de ese Drive, no solo tener el archivo compartido. " +
       `[Detalle: ${msg}]`
     );
   }

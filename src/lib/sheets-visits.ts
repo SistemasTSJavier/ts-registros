@@ -6,7 +6,11 @@ import {
   GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
   prepareGoogleServiceAccountPrivateKey,
 } from "@/lib/google-env";
-import { resolveGoogleSheetsStorage } from "@/lib/google-setup";
+import {
+  ensureSpreadsheetByEnvId,
+  resolveGoogleSheetsStorage,
+} from "@/lib/google-setup";
+import { getSheetTokenLookup, saveSheetTokenLookup } from "@/lib/sheet-token-lookup";
 
 export type WalkInStatus = "AWAITING_APPROVAL" | "APPROVED" | "DENIED";
 export type ScheduledStatus = "SCHEDULED" | "CHECKED_IN" | "CHECKED_OUT" | "DENIED";
@@ -68,6 +72,7 @@ function getServiceAccountAuthOrThrow() {
     email: clientEmail,
     key: privateKey,
     scopes: [
+      "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/drive",
       "https://www.googleapis.com/auth/spreadsheets",
     ],
@@ -106,6 +111,26 @@ function normalizeEmails(raw: string): string[] {
 async function getSheetsClient() {
   const auth = getServiceAccountAuthOrThrow();
   const sheets = google.sheets({ version: "v4", auth });
+  const setup = await resolveGoogleSheetsStorage();
+  return { sheets, ...setup };
+}
+
+async function getSheetsClientForToken(tokenOrId: string) {
+  const auth = getServiceAccountAuthOrThrow();
+  const sheets = google.sheets({ version: "v4", auth });
+  const mapped = await getSheetTokenLookup(tokenOrId);
+  if (mapped) {
+    const { sheetName } = await ensureSpreadsheetByEnvId(
+      auth,
+      mapped.sheets_spreadsheet_id,
+      mapped.sheets_sheet_name,
+    );
+    return {
+      sheets,
+      sheetsSpreadsheetId: mapped.sheets_spreadsheet_id,
+      sheetsSheetName: sheetName,
+    };
+  }
   const setup = await resolveGoogleSheetsStorage();
   return { sheets, ...setup };
 }
@@ -201,14 +226,15 @@ function rowToVisit(values: unknown[]): AnyVisit | null {
 }
 
 async function findRowIndexByTokenOrId(tokenOrId: string) {
-  const { sheets, sheetsSpreadsheetId, sheetsSheetName } = await getSheetsClient();
+  const { sheets, sheetsSpreadsheetId, sheetsSheetName } =
+    await getSheetsClientForToken(tokenOrId);
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetsSpreadsheetId,
     range: `${sheetsSheetName}!B2:B`,
     majorDimension: "COLUMNS",
   });
   const col = res.data.values?.[0] ?? [];
-  const idx = col.findIndex((v) => String(v ?? "") === tokenOrId);
+  const idx = col.findIndex((v: unknown) => String(v ?? "") === tokenOrId);
   return { sheets, sheetsSpreadsheetId, sheetsSheetName, idx };
 }
 
@@ -309,6 +335,8 @@ export async function createWalkInVisitInSheets(input: {
     requestBody: { values: [buildRowValues(row)] },
   });
 
+  await saveSheetTokenLookup(row.tokenOrId, sheetsSpreadsheetId, sheetsSheetName);
+
   return row;
 }
 
@@ -363,6 +391,8 @@ export async function createScheduledVisitInSheets(input: {
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [buildRowValues(row)] },
   });
+
+  await saveSheetTokenLookup(row.tokenOrId, sheetsSpreadsheetId, sheetsSheetName);
 
   return row;
 }
@@ -475,12 +505,17 @@ export async function scanScheduledAccessToken(
 }
 
 export async function getWalkInByToken(token: string): Promise<WalkInVisitRow | null> {
-  const { sheetsSpreadsheetId, sheetsSheetName } = await getSheetsClient();
-  const rows = await readAllRows(sheetsSheetName, sheetsSpreadsheetId);
-  for (const r of rows) {
-    const v = rowToVisit(r);
-    if (v?.type === "walk-in" && v.tokenOrId === token) return v;
-  }
+  const { sheets, sheetsSpreadsheetId, sheetsSheetName, idx } =
+    await findRowIndexByTokenOrId(token);
+  if (idx === -1) return null;
+  const rowNumber = 2 + idx;
+  const rowRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetsSpreadsheetId,
+    range: `${sheetsSheetName}!A${rowNumber}:AA${rowNumber}`,
+  });
+  const rowValues = rowRes.data.values?.[0] ?? [];
+  const v = rowToVisit(rowValues);
+  if (v?.type === "walk-in" && v.tokenOrId === token) return v;
   return null;
 }
 

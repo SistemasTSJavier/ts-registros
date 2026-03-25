@@ -3,37 +3,45 @@ import Link from "next/link";
 export default function RegistroIndexPage() {
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-        Formas de registro
+      <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-zinc-50">
+        Tipo de registro
       </h1>
-      <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-        Elige el tipo de registro que corresponda.
+      <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+        Los datos se guardan en la hoja del espacio que tengas seleccionado. Los
+        avisos por correo salen desde tu cuenta de Google.
       </p>
       <ul className="mt-8 flex flex-col gap-4">
         <li>
           <Link
             href="/registro/programada"
-            className="block rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+            className="group block rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm ring-1 ring-slate-900/5 transition hover:border-slate-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/80 dark:ring-white/5 dark:hover:border-zinc-600"
           >
-            <span className="font-medium text-zinc-900 dark:text-zinc-50">
-              Programación de visita
+            <span className="font-semibold text-slate-900 dark:text-zinc-50">
+              Visita programada
             </span>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Datos, horario y correos de aviso. El oficial verifica identificación al llegar.
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+              Fecha, horario y notificaciones por correo. En recepción se
+              verifica la identificación.
             </p>
+            <span className="mt-4 inline-flex text-sm font-medium text-slate-700 group-hover:text-slate-900 dark:text-zinc-400 dark:group-hover:text-zinc-200">
+              Abrir formulario →
+            </span>
           </Link>
         </li>
         <li>
           <Link
             href="/registro/sin-programacion"
-            className="block rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+            className="group block rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm ring-1 ring-slate-900/5 transition hover:border-slate-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/80 dark:ring-white/5 dark:hover:border-zinc-600"
           >
-            <span className="font-medium text-zinc-900 dark:text-zinc-50">
-              Entrada sin programación
+            <span className="font-semibold text-slate-900 dark:text-zinc-50">
+              Entrada sin cita
             </span>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Foto de INE para ayudar a capturar datos; correo para aprobar o denegar.
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+              Opcional: captura de INE; correo para aprobar o denegar la entrada.
             </p>
+            <span className="mt-4 inline-flex text-sm font-medium text-slate-700 group-hover:text-slate-900 dark:text-zinc-400 dark:group-hover:text-zinc-200">
+              Abrir formulario →
+            </span>
           </Link>
         </li>
       </ul>
