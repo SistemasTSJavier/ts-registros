@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function EspacioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; createError?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) {
@@ -29,6 +29,7 @@ export default async function EspacioPage({
   const email = session.user.email?.toLowerCase() ?? "";
   const sp = await searchParams;
   const next = sp.next && sp.next.startsWith("/") ? sp.next : "/";
+  const createError = sp.createError?.trim();
 
   const legacy = await hasLegacyGoogleIntegration();
   if (legacy) {
@@ -80,6 +81,8 @@ export default async function EspacioPage({
 
   const saEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
 
+  const uiError = createError ?? dbError;
+
   return (
     <div className="mx-auto min-h-full max-w-lg px-4 py-12 font-sans">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
@@ -91,26 +94,19 @@ export default async function EspacioPage({
         instalación de la app es independiente de otras.
       </p>
 
-      {dbError ? (
+      {uiError ? (
         <div
           className="mt-8 rounded-xl border border-red-200 bg-red-50 p-4 text-left text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
           role="alert"
         >
-          <p className="font-medium">Base de datos no disponible</p>
-          <p className="mt-2 text-red-800/90 dark:text-red-200/90">
-            En Vercel: revisa que{" "}
-            <code className="rounded bg-red-100 px-1 text-xs dark:bg-red-900/80">
-              DATABASE_URL
-            </code>{" "}
-            apunte a Supabase y que hayas aplicado el esquema (desde tu PC, con
-            la misma URL: crea las tablas manuales en Supabase y verifica que
-            existen `workspace`, `user_workspace` y `google_integration_state`).
+          <p className="font-medium">No se pudo completar la operación</p>
+          <p className="mt-2 font-mono text-xs opacity-90 whitespace-pre-wrap break-words">
+            {uiError}
           </p>
-          <p className="mt-2 font-mono text-xs opacity-90">{dbError}</p>
         </div>
       ) : null}
 
-      {!dbError && memberships.length > 0 ? (
+      {!uiError && memberships.length > 0 ? (
         <section className="mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Ya perteneces a un espacio
@@ -147,8 +143,8 @@ export default async function EspacioPage({
       ) : null}
 
       <section
-        className={`mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${dbError ? "opacity-50 pointer-events-none" : ""}`}
-        aria-hidden={Boolean(dbError)}
+        className={`mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${uiError ? "opacity-50 pointer-events-none" : ""}`}
+        aria-hidden={Boolean(uiError)}
       >
         <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
           Crear nuevo espacio

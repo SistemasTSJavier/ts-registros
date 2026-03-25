@@ -58,7 +58,10 @@ function formatGoogleApiError(err: unknown): string {
         data?: {
           error?: {
             message?: string;
-            errors?: Array<{ message?: string }>;
+            code?: number | string;
+            status?: string;
+            domain?: string;
+            errors?: Array<{ message?: string; reason?: string; domain?: string }>;
           };
         };
       };
@@ -66,8 +69,19 @@ function formatGoogleApiError(err: unknown): string {
     };
     const d = r.response?.data?.error;
     const first = d?.errors?.[0]?.message;
-    if (first) return first;
-    if (d?.message) return d.message;
+    const reason = d?.errors?.[0]?.reason;
+    const domain = d?.errors?.[0]?.domain ?? d?.domain;
+
+    const base = first ?? d?.message ?? r.message;
+    if (!base) return "Error de Google API";
+
+    const bits: string[] = [base];
+    if (reason) bits.push(`reason: ${reason}`);
+    if (domain) bits.push(`domain: ${domain}`);
+    if (d?.code) bits.push(`code: ${String(d.code)}`);
+    if (d?.status) bits.push(`status: ${d.status}`);
+
+    return bits.join(" | ");
   }
   if (err instanceof Error) return err.message;
   return String(err);
@@ -85,6 +99,7 @@ function getServiceAccountAuth() {
     key: privateKey,
     // drive.file suele fallar con "permission denied" en carpetas/hojas compartidas con la cuenta de servicio.
     scopes: [
+      "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/drive",
       "https://www.googleapis.com/auth/spreadsheets",
     ],
@@ -105,10 +120,31 @@ function defaultSheetName(): string {
   return envOrEmpty("GOOGLE_SHEETS_SHEET_NAME") || "Hoja 1";
 }
 
-async function ensureDriveFolder(auth: JWT, folderName?: string): Promise<string> {
+async function ensureDriveFolder(
+  auth: JWT,
+  folderName?: string,
+  parentFolderId?: string | null,
+): Promise<string> {
   const drive = google.drive({ version: "v3", auth });
 
   const name = folderName ?? defaultDriveFolderName();
+
+  // Si tenemos un folder padre (compartido con la cuenta de servicio),
+  // creamos ahí directamente para evitar problemas de permisos con "root".
+  if (parentFolderId) {
+    const created = await drive.files.create({
+      requestBody: {
+        name,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentFolderId],
+      },
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    if (!created.data.id) throw new Error("No se pudo crear carpeta en Drive.");
+    return created.data.id;
+  }
+
   const q = `mimeType='application/vnd.google-apps.folder' and name='${name.replace(
     /'/g,
     "\\'",
@@ -319,6 +355,13 @@ export async function createFreshWorkspaceResources(
   if (!serviceAuth) {
     throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
+  const parentFolderId = envTrim("GOOGLE_DRIVE_FOLDER_ID") || null;
+  if (!parentFolderId) {
+    throw new Error(
+      "Permiso insuficiente para crear en Drive 'root'. Para aislar cada servicio, crea (o usa) una carpeta EXCLUSIVA para este servicio y pon su ID en GOOGLE_DRIVE_FOLDER_ID (compártela con la cuenta de servicio: " +
+        "ts-registros@ts-registros.iam.gserviceaccount.com).",
+    );
+  }
   const folderName = `Registros-${uniqueSuffix}`;
   try {
     await serviceAuth.authorize();
@@ -328,7 +371,11 @@ export async function createFreshWorkspaceResources(
     );
   }
   try {
-    const driveFolderId = await ensureDriveFolder(serviceAuth, folderName);
+    const driveFolderId = await ensureDriveFolder(
+      serviceAuth,
+      folderName,
+      parentFolderId,
+    );
     const sheets = await ensureSpreadsheet(
       serviceAuth,
       driveFolderId,
@@ -340,8 +387,13 @@ export async function createFreshWorkspaceResources(
       sheetsSheetName: sheets.sheetName,
     };
   } catch (e) {
+    const formatted = formatGoogleApiError(e);
+    const hint =
+      !parentFolderId && formatted.toLowerCase().includes("permission")
+        ? " Pista: define `GOOGLE_DRIVE_FOLDER_ID` en tu .env/Vercel apuntando a una carpeta que compartas con la cuenta de servicio (como Editor)."
+        : "";
     throw new Error(
-      `Google Drive/Sheets: ${formatGoogleApiError(e)}. Comprueba en Google Cloud que estén habilitadas la API de Drive y la de Sheets en el mismo proyecto que la cuenta de servicio.`,
+      `Google Drive/Sheets: ${formatted}.${hint} Comprueba en Google Cloud que estén habilitadas la API de Drive y la de Sheets en el mismo proyecto que la cuenta de servicio.`,
     );
   }
 }
@@ -372,7 +424,17 @@ async function ensureGoogleDriveAndSheetsSetupLegacy(): Promise<GoogleSheetsStor
   const fromDb = await tryLoadIntegrationFromDatabase(serviceAuth);
   if (fromDb) return fromDb;
 
-  const driveFolderId = await ensureDriveFolder(serviceAuth);
+  if (!envFolderId) {
+    throw new Error(
+      "GOOGLE_DRIVE_FOLDER_ID está vacío. Para evitar crear en Drive 'root' (403), crea una carpeta EXCLUSIVA para este servicio y pon su ID en GOOGLE_DRIVE_FOLDER_ID.",
+    );
+  }
+
+  const driveFolderId = await ensureDriveFolder(
+    serviceAuth,
+    undefined,
+    envFolderId,
+  );
   const sheets = await ensureSpreadsheet(serviceAuth, driveFolderId);
 
   await saveGoogleIntegrationState({

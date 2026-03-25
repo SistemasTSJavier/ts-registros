@@ -52,13 +52,13 @@ export async function createWorkspaceAction(formData: FormData): Promise<void> {
   }
 
   const suffix = randomBytes(4).toString("hex");
+  const next = safeNext(String(formData.get("next") ?? "/"));
   let storage;
   try {
     storage = await createFreshWorkspaceResources(suffix);
   } catch (e) {
-    throw new Error(
-      e instanceof Error ? e.message : "No se pudo crear la carpeta en Google.",
-    );
+    const msg = e instanceof Error ? e.message : "No se pudo crear la carpeta en Google.";
+    redirect(`/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`);
   }
 
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -102,7 +102,8 @@ export async function createWorkspaceAction(formData: FormData): Promise<void> {
     } catch (e) {
       if (isRedirectError(e)) throw e;
       if (isJoinCodeUniqueViolation(e)) continue;
-      throw e instanceof Error ? e : new Error("No se pudo guardar el espacio.");
+      const msg = e instanceof Error ? e.message : "No se pudo guardar el espacio.";
+      redirect(`/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`);
     }
   }
 
