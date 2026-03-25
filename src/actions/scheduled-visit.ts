@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getAppBaseUrl } from "@/lib/app-url";
+import { formatGoogleApiErrorForUser } from "@/lib/google-user-error";
 import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
 import { sendMailHtml } from "@/lib/email";
 import { createScheduledVisitInSheets } from "@/lib/sheets-visits";
@@ -129,8 +130,7 @@ export async function createScheduledVisit(
     revalidatePath("/visitas/programadas");
     return { ok: true, id: visit.recordId, token: visit.tokenOrId };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "No se pudo guardar el registro.";
-    return { ok: false, error: msg };
+    return { ok: false, error: formatGoogleApiErrorForUser(e) };
   }
 }
 
