@@ -48,12 +48,22 @@ export default async function Home() {
               <p className="mt-2 text-sm font-medium text-slate-900 dark:text-zinc-100">
                 {session.user.email ?? session.user.name}
               </p>
-              <Link
-                href="/espacio?next=/#ids-manuales"
-                className="mt-3 inline-flex text-sm font-medium text-slate-700 underline-offset-4 hover:underline dark:text-zinc-300"
-              >
-                Espacio de trabajo y hoja de Google
-              </Link>
+              <div className="mt-3 flex flex-col gap-2">
+                <Link
+                  href="/espacio?next=/#ids-manuales"
+                  className="inline-flex text-sm font-medium text-slate-700 underline-offset-4 hover:underline dark:text-zinc-300"
+                >
+                  Espacio de trabajo y hoja de Google
+                </Link>
+                {!needsEspacio ? (
+                  <Link
+                    href="/espacio?reconfigure=1&next=/"
+                    className="inline-flex text-xs font-medium text-slate-500 underline-offset-4 hover:text-slate-800 hover:underline dark:text-zinc-500 dark:hover:text-zinc-300"
+                  >
+                    Usar otra carpeta u hoja (nuevo espacio)
+                  </Link>
+                ) : null}
+              </div>
               <div className="mt-5 flex justify-center border-t border-slate-100 pt-5 dark:border-zinc-800">
                 <SignOutButton />
               </div>

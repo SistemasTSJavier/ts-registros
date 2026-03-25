@@ -16,6 +16,7 @@ import {
 import {
   getResolvedWorkspaceForUserEmail,
   hasLegacyGoogleIntegration,
+  userWorkspaceCount,
 } from "@/lib/workspace-resolver";
 
 const COLUMNS = [
@@ -746,6 +747,14 @@ export async function resolveGoogleSheetsStorage(): Promise<GoogleSheetsStorage>
       sheetsSpreadsheetId: ws.sheetsSpreadsheetId,
       sheetsSheetName: sheetName,
     };
+  }
+
+  const n = await userWorkspaceCount(email);
+  if (n > 0) {
+    throw new Error(
+      "Tu cuenta tiene varios espacios de trabajo y no hay uno seleccionado en este navegador. " +
+        "Abre /espacio, elige «Tus espacios» con el código correcto, o añade ?reconfigure=1 para crear otro.",
+    );
   }
 
   if (await hasLegacyGoogleIntegration()) {

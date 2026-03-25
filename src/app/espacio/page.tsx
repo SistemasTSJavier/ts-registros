@@ -14,6 +14,7 @@ import { envTrim } from "@/lib/google-env";
 import { dbQuery } from "@/lib/db";
 import {
   getResolvedWorkspaceForUserEmail,
+  getResolvedWorkspaceFromCookieOnly,
   hasLegacyGoogleIntegration,
 } from "@/lib/workspace-resolver";
 
@@ -31,7 +32,12 @@ const inputClass =
 export default async function EspacioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; createError?: string }>;
+  searchParams: Promise<{
+    next?: string;
+    createError?: string;
+    reconfigure?: string;
+    force?: string;
+  }>;
 }) {
   const session = await auth();
   if (!session?.user) {
@@ -42,14 +48,13 @@ export default async function EspacioPage({
   const sp = await searchParams;
   const next = sp.next && sp.next.startsWith("/") ? sp.next : "/";
   const createError = sp.createError?.trim();
+  const reconfigure = sp.reconfigure === "1" || sp.force === "1";
 
   const legacy = await hasLegacyGoogleIntegration();
-  if (legacy) {
-    redirect(next);
-  }
 
+  const activeCookie = await getResolvedWorkspaceFromCookieOnly(email);
   const active = await getResolvedWorkspaceForUserEmail(email);
-  if (active) {
+  if (activeCookie && !reconfigure) {
     redirect(next);
   }
 
@@ -125,6 +130,35 @@ export default async function EspacioPage({
           </p>
         </header>
 
+        {legacy ? (
+          <div
+            className="mb-6 rounded-2xl border border-amber-200/90 bg-amber-50 px-5 py-4 text-left text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
+            role="status"
+          >
+            <p className="font-semibold">Integración global antigua detectada</p>
+            <p className="mt-2 leading-relaxed text-amber-950/90 dark:text-amber-100/90">
+              Mientras no crees un <strong>espacio de trabajo</strong> aquí, los
+              registros pueden seguir yendo a la hoja guardada en el servidor
+              (legacy). Crea un espacio con tus IDs o con «Generar carpeta y hoja
+              nuevas» para usar solo la hoja que elijas.
+            </p>
+          </div>
+        ) : null}
+
+        {reconfigure && (activeCookie || active) ? (
+          <div
+            className="mb-6 rounded-2xl border border-sky-200/90 bg-sky-50 px-5 py-4 text-left text-sm text-sky-950 dark:border-sky-900/40 dark:bg-sky-950/35 dark:text-sky-100"
+            role="status"
+          >
+            <p className="font-semibold">Cambiar de hoja o carpeta</p>
+            <p className="mt-2 leading-relaxed text-sky-900/85 dark:text-sky-200/90">
+              Estás creando un <strong>nuevo espacio</strong> (nuevo código REG-…).
+              Tras guardar, los registros usarán esa hoja. El espacio anterior
+              seguirá en Google; puedes borrarlo o ignorarlo si ya no lo necesitas.
+            </p>
+          </div>
+        ) : null}
+
         {uiError ? (
           <div
             className="mb-8 rounded-2xl border border-red-200/90 bg-red-50 px-5 py-4 text-left text-sm text-red-950 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100"
@@ -138,7 +172,8 @@ export default async function EspacioPage({
         ) : null}
 
         <section
-          className={`mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
+          id="ids-manuales"
+          className={`scroll-mt-8 mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
           aria-hidden={Boolean(uiError)}
         >
           <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
@@ -163,6 +198,9 @@ export default async function EspacioPage({
             className="mt-5 flex flex-col gap-3"
           >
             <input type="hidden" name="next" value={next} />
+            {reconfigure ? (
+              <input type="hidden" name="reconfigure" value="1" />
+            ) : null}
             <div>
               <label
                 htmlFor="manualFolderId"
@@ -269,6 +307,9 @@ export default async function EspacioPage({
           </p>
           <form action={createWorkspaceAction} className="mt-5">
             <input type="hidden" name="next" value={next} />
+            {reconfigure ? (
+              <input type="hidden" name="reconfigure" value="1" />
+            ) : null}
             <button type="submit" className={btnPrimary}>
               Generar carpeta y hoja nuevas
             </button>
@@ -290,6 +331,9 @@ export default async function EspacioPage({
           </p>
           <form action={createWorkspaceFromGoogleRefAction} className="mt-5 space-y-3">
             <input type="hidden" name="next" value={next} />
+            {reconfigure ? (
+              <input type="hidden" name="reconfigure" value="1" />
+            ) : null}
             <input
               name="googleRef"
               type="text"

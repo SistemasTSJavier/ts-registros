@@ -41,6 +41,20 @@ function safeNext(raw: string): string {
   return n.startsWith("/") && !n.startsWith("//") ? n : "/";
 }
 
+function formReconfigureFlag(formData: FormData): boolean {
+  return String(formData.get("reconfigure") ?? "") === "1";
+}
+
+function redirectEspacioWithError(
+  next: string,
+  msg: string,
+  reconfigure: boolean,
+): never {
+  let url = `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`;
+  if (reconfigure) url += "&reconfigure=1";
+  redirect(url);
+}
+
 function isJoinCodeUniqueViolation(e: unknown): boolean {
   const code = (e as { code?: string } | null)?.code;
   if (code !== "23505") return false;
@@ -52,6 +66,7 @@ async function insertWorkspaceAndExit(
   storage: GoogleSheetsStorage,
   email: string,
   next: string,
+  reconfigure: boolean,
 ): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const joinCode = generateJoinCode();
@@ -95,9 +110,7 @@ async function insertWorkspaceAndExit(
       if (isRedirectError(e)) throw e;
       if (isJoinCodeUniqueViolation(e)) continue;
       const msg = e instanceof Error ? e.message : "No se pudo guardar el espacio.";
-      redirect(
-        `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
-      );
+      redirectEspacioWithError(next, msg, reconfigure);
     }
   }
 
@@ -115,15 +128,16 @@ export async function createWorkspaceAction(formData: FormData): Promise<void> {
 
   const suffix = randomBytes(4).toString("hex");
   const next = safeNext(String(formData.get("next") ?? "/"));
+  const reconfigure = formReconfigureFlag(formData);
   let storage: GoogleSheetsStorage;
   try {
     storage = await createFreshWorkspaceResources(suffix);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "No se pudo crear la carpeta en Google.";
-    redirect(`/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`);
+    redirectEspacioWithError(next, msg, reconfigure);
   }
 
-  await insertWorkspaceAndExit(storage, email, next);
+  await insertWorkspaceAndExit(storage, email, next, reconfigure);
 }
 
 export async function createWorkspaceFromManualIdsAction(
@@ -136,6 +150,7 @@ export async function createWorkspaceFromManualIdsAction(
   }
 
   const next = safeNext(String(formData.get("next") ?? "/"));
+  const reconfigure = formReconfigureFlag(formData);
   const folderIdRaw = String(formData.get("manualFolderId") ?? "");
   const spreadsheetIdRaw = String(formData.get("manualSpreadsheetId") ?? "");
   const sheetNameRaw = String(formData.get("manualSheetName") ?? "").trim();
@@ -152,12 +167,10 @@ export async function createWorkspaceFromManualIdsAction(
       e instanceof Error
         ? e.message
         : "No se pudo validar los IDs en Google.";
-    redirect(
-      `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
-    );
+    redirectEspacioWithError(next, msg, reconfigure);
   }
 
-  await insertWorkspaceAndExit(storage, email, next);
+  await insertWorkspaceAndExit(storage, email, next, reconfigure);
 }
 
 export async function createWorkspaceFromGoogleRefAction(
@@ -170,6 +183,7 @@ export async function createWorkspaceFromGoogleRefAction(
   }
 
   const next = safeNext(String(formData.get("next") ?? "/"));
+  const reconfigure = formReconfigureFlag(formData);
   const raw = String(formData.get("googleRef") ?? "").trim();
 
   let storage: GoogleSheetsStorage;
@@ -180,12 +194,10 @@ export async function createWorkspaceFromGoogleRefAction(
       e instanceof Error
         ? e.message
         : "No se pudo validar el recurso en Google.";
-    redirect(
-      `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
-    );
+    redirectEspacioWithError(next, msg, reconfigure);
   }
 
-  await insertWorkspaceAndExit(storage, email, next);
+  await insertWorkspaceAndExit(storage, email, next, reconfigure);
 }
 
 export async function joinWorkspaceAction(formData: FormData): Promise<void> {
