@@ -1,7 +1,10 @@
-import Link from "next/link";
-
-import { auth } from "@/auth";
+import { auth, signIn } from "@/auth";
 import { SignOutButton } from "@/components/sign-out-button";
+
+async function signInWithGoogle() {
+  "use server";
+  await signIn("google", { redirectTo: "/" });
+}
 
 export default async function Home() {
   const session = await auth();
@@ -16,12 +19,14 @@ export default async function Home() {
           <SignOutButton />
         </div>
       ) : (
-        <Link
-          className="rounded-full bg-zinc-900 px-8 py-3 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-          href="/api/auth/signin/google"
-        >
-          Iniciar sesión
-        </Link>
+        <form action={signInWithGoogle}>
+          <button
+            type="submit"
+            className="rounded-full bg-zinc-900 px-8 py-3 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          >
+            Iniciar sesión
+          </button>
+        </form>
       )}
     </div>
   );

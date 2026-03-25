@@ -13,7 +13,7 @@ export default async function AdminLayout({
 }) {
   const session = await auth();
   if (!session?.user) {
-    redirect("/api/auth/signin/google");
+    redirect("/api/auth/signin?callbackUrl=" + encodeURIComponent("/admin"));
   }
 
   const email = getUserEmail(session);

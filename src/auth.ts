@@ -1,19 +1,26 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
+/** Evita fallos por espacios al pegar en Vercel. */
+function envTrim(name: string): string {
+  const v = process.env[name];
+  if (v == null) return "";
+  return v.trim();
+}
+
 const secret =
-  process.env.AUTH_SECRET ??
-  process.env.NEXTAUTH_SECRET ??
-  "";
+  envTrim("AUTH_SECRET") ||
+  envTrim("NEXTAUTH_SECRET");
 
 const googleClientId =
-  process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID ?? "";
+  envTrim("AUTH_GOOGLE_ID") || envTrim("GOOGLE_CLIENT_ID");
 const googleClientSecret =
-  process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET ?? "";
+  envTrim("AUTH_GOOGLE_SECRET") || envTrim("GOOGLE_CLIENT_SECRET");
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Obligatorio en producción; Vercel a veces usa NEXTAUTH_SECRET.
+  // Obligatorio en producción. Si falta, Auth.js devuelve error=Configuration.
   secret: secret || undefined,
+  debug: process.env.AUTH_DEBUG === "true",
   providers: [
     Google({
       clientId: googleClientId,

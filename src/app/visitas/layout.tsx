@@ -13,7 +13,9 @@ export default async function VisitasLayout({
 }) {
   const session = await auth();
   if (!session?.user) {
-    redirect("/api/auth/signin/google");
+    redirect(
+      "/api/auth/signin?callbackUrl=" + encodeURIComponent("/visitas"),
+    );
   }
   const email = getUserEmail(session);
   if (!isOfficerEmail(email)) {
