@@ -50,6 +50,29 @@ function envOrEmpty(name: string): string {
   return process.env[name] ?? "";
 }
 
+/** Mensaje legible desde respuestas de googleapis (403, invalid_grant, etc.). */
+function formatGoogleApiError(err: unknown): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const r = err as {
+      response?: {
+        data?: {
+          error?: {
+            message?: string;
+            errors?: Array<{ message?: string }>;
+          };
+        };
+      };
+      message?: string;
+    };
+    const d = r.response?.data?.error;
+    const first = d?.errors?.[0]?.message;
+    if (first) return first;
+    if (d?.message) return d.message;
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 function getServiceAccountAuth() {
   const clientEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
   const privateKeyRaw = envTrim("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
@@ -122,14 +145,19 @@ async function moveDriveFileIntoFolder(
   const meta = await drive.files.get({
     fileId,
     fields: "parents",
+    supportsAllDrives: true,
   });
   const parents = meta.data.parents ?? [];
   if (parents.includes(driveFolderId)) return;
+  // Hojas nuevas suelen estar bajo "root"; si parents viene vacío, hay que quitar root explícitamente.
+  const removeParents =
+    parents.length > 0 ? parents.join(",") : "root";
   await drive.files.update({
     fileId,
     addParents: driveFolderId,
-    removeParents: parents.length > 0 ? parents.join(",") : undefined,
+    removeParents,
     fields: "id,parents",
+    supportsAllDrives: true,
   });
 }
 
@@ -284,17 +312,30 @@ export async function createFreshWorkspaceResources(
     throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
   const folderName = `Registros-${uniqueSuffix}`;
-  const driveFolderId = await ensureDriveFolder(serviceAuth, folderName);
-  const sheets = await ensureSpreadsheet(
-    serviceAuth,
-    driveFolderId,
-    `Registros-${uniqueSuffix}`,
-  );
-  return {
-    driveFolderId,
-    sheetsSpreadsheetId: sheets.spreadsheetId,
-    sheetsSheetName: sheets.sheetName,
-  };
+  try {
+    await serviceAuth.authorize();
+  } catch (e) {
+    throw new Error(
+      `No se pudo autorizar la cuenta de servicio (clave PEM, reloj del servidor o APIs deshabilitadas): ${formatGoogleApiError(e)}`,
+    );
+  }
+  try {
+    const driveFolderId = await ensureDriveFolder(serviceAuth, folderName);
+    const sheets = await ensureSpreadsheet(
+      serviceAuth,
+      driveFolderId,
+      `Registros-${uniqueSuffix}`,
+    );
+    return {
+      driveFolderId,
+      sheetsSpreadsheetId: sheets.spreadsheetId,
+      sheetsSheetName: sheets.sheetName,
+    };
+  } catch (e) {
+    throw new Error(
+      `Google Drive/Sheets: ${formatGoogleApiError(e)}. Comprueba en Google Cloud que estén habilitadas la API de Drive y la de Sheets en el mismo proyecto que la cuenta de servicio.`,
+    );
+  }
 }
 
 async function ensureGoogleDriveAndSheetsSetupLegacy(): Promise<GoogleSheetsStorage> {
