@@ -33,7 +33,9 @@ export default async function VisitasLayout({
   if (!legacy) {
     const ws = await getResolvedWorkspaceForUserEmail(email!);
     if (!ws) {
-      redirect("/espacio?next=" + encodeURIComponent("/visitas"));
+      redirect(
+        "/espacio?next=" + encodeURIComponent("/visitas") + "#ids-manuales",
+      );
     }
   }
 
@@ -73,7 +75,7 @@ export default async function VisitasLayout({
             <Link href="/visitas/sin-programacion" className={navLink}>
               Sin cita
             </Link>
-            <Link href="/espacio?next=/visitas" className={navLink}>
+            <Link href="/espacio?next=/visitas#ids-manuales" className={navLink}>
               Espacio
             </Link>
             <Link href="/" className={navLink}>

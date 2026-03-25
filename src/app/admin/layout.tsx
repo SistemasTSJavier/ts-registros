@@ -32,7 +32,9 @@ export default async function AdminLayout({
   if (!legacy) {
     const ws = await getResolvedWorkspaceForUserEmail(email!);
     if (!ws) {
-      redirect("/espacio?next=" + encodeURIComponent("/admin"));
+      redirect(
+        "/espacio?next=" + encodeURIComponent("/admin") + "#ids-manuales",
+      );
     }
   }
 
@@ -66,7 +68,7 @@ export default async function AdminLayout({
             <Link href="/visitas" className={navLink}>
               Panel oficial
             </Link>
-            <Link href="/espacio?next=/admin" className={navLink}>
+            <Link href="/espacio?next=/admin#ids-manuales" className={navLink}>
               Espacio
             </Link>
             <Link href="/" className={navLink}>

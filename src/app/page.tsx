@@ -49,7 +49,7 @@ export default async function Home() {
                 {session.user.email ?? session.user.name}
               </p>
               <Link
-                href="/espacio?next=/"
+                href="/espacio?next=/#ids-manuales"
                 className="mt-3 inline-flex text-sm font-medium text-slate-700 underline-offset-4 hover:underline dark:text-zinc-300"
               >
                 Espacio de trabajo y hoja de Google
@@ -66,7 +66,7 @@ export default async function Home() {
                   Crea una hoja nueva, enlaza una existente o únete con código.
                 </p>
                 <Link
-                  href="/espacio?next=/"
+                  href="/espacio?next=/#ids-manuales"
                   className="mt-4 inline-flex rounded-xl bg-sky-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm dark:bg-sky-200 dark:text-sky-950"
                 >
                   Ir a configuración

@@ -30,7 +30,9 @@ export default async function RegistroLayout({
   const ws = await getResolvedWorkspaceForUserEmail(email);
   const legacy = await hasLegacyGoogleIntegration();
   if (!ws && !legacy) {
-    redirect("/espacio?next=" + encodeURIComponent("/registro"));
+    redirect(
+      "/espacio?next=" + encodeURIComponent("/registro") + "#ids-manuales",
+    );
   }
 
   return (

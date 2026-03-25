@@ -8,6 +8,7 @@ import {
   joinWorkspaceAction,
   selectWorkspaceAction,
 } from "@/actions/workspace-actions";
+import { ScrollToHash } from "@/components/scroll-to-hash";
 import { auth } from "@/auth";
 import { envTrim } from "@/lib/google-env";
 import { dbQuery } from "@/lib/db";
@@ -96,6 +97,7 @@ export default async function EspacioPage({
 
   return (
     <div className="min-h-full bg-gradient-to-b from-slate-50 via-white to-slate-100/80 dark:from-zinc-950 dark:via-zinc-950 dark:to-zinc-900">
+      <ScrollToHash />
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6">
         <header className="mb-10">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-500">
@@ -109,6 +111,17 @@ export default async function EspacioPage({
             Los <strong>registros en Sheets</strong> y archivos en Drive los
             gestiona la cuenta de servicio del servidor: comparte carpeta y
             hoja con ese correo como editor, o crea recursos nuevos desde aquí.
+          </p>
+          <p className="mt-4">
+            <a
+              href="#ids-manuales"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-slate-900/5 transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-white/10 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+            >
+              Pegar IDs de carpeta y hoja de cálculo
+              <span aria-hidden className="text-slate-400 dark:text-zinc-500">
+                ↓
+              </span>
+            </a>
           </p>
         </header>
 
@@ -242,7 +255,8 @@ export default async function EspacioPage({
         ) : null}
 
         <section
-          className={`mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
+          id="crear-hoja-nueva"
+          className={`scroll-mt-8 mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
           aria-hidden={Boolean(uiError)}
         >
           <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
@@ -262,7 +276,8 @@ export default async function EspacioPage({
         </section>
 
         <section
-          className={`mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
+          id="enlace-drive"
+          className={`scroll-mt-8 mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
           aria-hidden={Boolean(uiError)}
         >
           <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
