@@ -40,7 +40,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   trustHost: true,
   callbacks: {
-    async jwt({ token, account }) {
+    async jwt({ token, account, user, profile }) {
+      if (user?.email) {
+        token.email = user.email;
+      }
+      const p = profile as { email?: string } | null | undefined;
+      if (!token.email && typeof p?.email === "string") {
+        token.email = p.email;
+      }
       if (account) {
         if (typeof account.access_token === "string") {
           token.googleAccessToken = account.access_token;

@@ -139,6 +139,8 @@ export async function createScheduledVisit(
     revalidatePath("/visitas/programadas");
     return { ok: true, id: visit.recordId, token: visit.tokenOrId };
   } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[createScheduledVisit]", detail);
     return { ok: false, error: formatGoogleApiErrorForUser(e) };
   }
 }

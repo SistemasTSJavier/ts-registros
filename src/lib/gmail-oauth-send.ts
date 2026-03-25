@@ -1,7 +1,10 @@
 import type { JWT } from "next-auth/jwt";
 import { google } from "googleapis";
-import { headers } from "next/headers";
-import { getToken } from "next-auth/jwt";
+import type { ReadonlyRequestCookies } from "next/dist/server/web/spec-extension/adapters/request-cookies";
+import { cookies, headers } from "next/headers";
+import { decode, getToken } from "next-auth/jwt";
+
+import { auth } from "@/auth";
 
 function envTrim(name: string): string {
   const v = process.env[name];
@@ -100,11 +103,90 @@ async function resolveAccessTokenForGmail(jwt: JWT): Promise<string> {
   );
 }
 
+/**
+ * Cookie de sesión en un solo fragmento o en trozos (.0, .1, …) como hace Auth.js.
+ */
+function readSessionTokenFromJar(
+  jar: Awaited<ReturnType<typeof cookies>>,
+  baseName: string,
+): string | null {
+  const single = jar.get(baseName)?.value;
+  if (single) return single;
+
+  const parts: { i: number; v: string }[] = [];
+  const prefix = `${baseName}.`;
+  for (const c of jar.getAll()) {
+    if (!c.name.startsWith(prefix)) continue;
+    const suf = c.name.slice(prefix.length);
+    const i = parseInt(suf, 10);
+    if (!Number.isFinite(i)) continue;
+    parts.push({ i, v: c.value });
+  }
+  if (parts.length === 0) return null;
+  parts.sort((a, b) => a.i - b.i);
+  return parts.map((p) => p.v).join("");
+}
+
+/** Misma lógica que Auth.js al leer el JWE de la cookie (nombre = salt). */
+async function decodeSessionJwtFromCookies(secret: string): Promise<JWT | null> {
+  const jar = await cookies();
+  const bases = [
+    "__Secure-authjs.session-token",
+    "authjs.session-token",
+  ] as const;
+
+  for (const base of bases) {
+    const raw = readSessionTokenFromJar(jar, base);
+    if (!raw) continue;
+    try {
+      const payload = await decode({ token: raw, secret, salt: base });
+      if (payload && typeof payload === "object") {
+        return payload as JWT;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+async function buildCookieHeaderForAuth(): Promise<string> {
+  const jar = await cookies();
+  const fromJar = jar.getAll().map((c) => `${c.name}=${c.value}`).join("; ");
+  if (fromJar) return fromJar;
+  return (await headers()).get("cookie")?.trim() ?? "";
+}
+
+/**
+ * Lee el JWT de sesión de Auth.js (mismos datos que usa `auth()`).
+ * 1) Lee la cookie con `cookies()` + `decode` (fiable en Server Actions / Vercel).
+ * 2) Respaldo con `getToken` y cabecera Cookie (segura / no segura).
+ * 3) Si falta `email` en el payload pero `auth()` sí lo tiene, se completa.
+ */
 export async function getAuthJwtFromRequest(): Promise<JWT | null> {
   const secret = getAuthSecretForJwt();
   if (!secret) return null;
-  const h = await headers();
-  return getToken({ req: { headers: h }, secret });
+
+  let token =
+    (await decodeSessionJwtFromCookies(secret)) ??
+    (await (async () => {
+      const cookie = await buildCookieHeaderForAuth();
+      if (!cookie) return null;
+      const req = { headers: { cookie } };
+      let t = await getToken({ req, secret, secureCookie: false });
+      if (!t) t = await getToken({ req, secret, secureCookie: true });
+      return t;
+    })());
+
+  if (token) {
+    const session = await auth();
+    const sessionEmail = session?.user?.email;
+    if (sessionEmail && !token.email) {
+      token = { ...token, email: sessionEmail };
+    }
+  }
+
+  return token;
 }
 
 /**

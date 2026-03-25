@@ -101,6 +101,8 @@ export async function createWalkInVisit(
     revalidatePath("/visitas/sin-programacion");
     return { ok: true, id: visit.recordId };
   } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[createWalkInVisit]", detail);
     return { ok: false, error: formatGoogleApiErrorForUser(e) };
   }
 }
