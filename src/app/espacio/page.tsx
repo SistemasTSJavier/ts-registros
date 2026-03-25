@@ -40,11 +40,22 @@ export default async function EspacioPage({
     redirect(next);
   }
 
-  const memberships = await prisma.userWorkspace.findMany({
-    where: { userEmail: email },
-    include: { workspace: true },
-    orderBy: { createdAt: "asc" },
-  });
+  let memberships: Awaited<
+    ReturnType<typeof prisma.userWorkspace.findMany<{ include: { workspace: true } }>>
+  > = [];
+  let dbError: string | null = null;
+  try {
+    memberships = await prisma.userWorkspace.findMany({
+      where: { userEmail: email },
+      include: { workspace: true },
+      orderBy: { createdAt: "asc" },
+    });
+  } catch (e) {
+    dbError =
+      e instanceof Error
+        ? e.message
+        : "No se pudo leer la base de datos (¿tablas creadas con prisma migrate deploy?).";
+  }
 
   const saEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
 
@@ -59,7 +70,28 @@ export default async function EspacioPage({
         instalación de la app es independiente de otras.
       </p>
 
-      {memberships.length > 0 ? (
+      {dbError ? (
+        <div
+          className="mt-8 rounded-xl border border-red-200 bg-red-50 p-4 text-left text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+          role="alert"
+        >
+          <p className="font-medium">Base de datos no disponible</p>
+          <p className="mt-2 text-red-800/90 dark:text-red-200/90">
+            En Vercel: revisa que{" "}
+            <code className="rounded bg-red-100 px-1 text-xs dark:bg-red-900/80">
+              DATABASE_URL
+            </code>{" "}
+            apunte a Supabase y que hayas aplicado el esquema (desde tu PC, con
+            la misma URL:{" "}
+            <code className="text-xs">npx prisma migrate deploy</code> o{" "}
+            <code className="text-xs">npx prisma db push</code>
+            ).
+          </p>
+          <p className="mt-2 font-mono text-xs opacity-90">{dbError}</p>
+        </div>
+      ) : null}
+
+      {!dbError && memberships.length > 0 ? (
         <section className="mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Ya perteneces a un espacio
@@ -95,7 +127,10 @@ export default async function EspacioPage({
         </section>
       ) : null}
 
-      <section className="mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+      <section
+        className={`mt-10 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${dbError ? "opacity-50 pointer-events-none" : ""}`}
+        aria-hidden={Boolean(dbError)}
+      >
         <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
           Crear nuevo espacio
         </h2>
@@ -115,7 +150,10 @@ export default async function EspacioPage({
         </form>
       </section>
 
-      <section className="mt-8 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+      <section
+        className={`mt-8 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${dbError ? "opacity-50 pointer-events-none" : ""}`}
+        aria-hidden={Boolean(dbError)}
+      >
         <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
           Unirme con código
         </h2>
