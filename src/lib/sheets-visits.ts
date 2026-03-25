@@ -1,6 +1,10 @@
 import { google } from "googleapis";
 import { randomBytes } from "crypto";
 
+import {
+  envTrim,
+  GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
+} from "@/lib/google-env";
 import { ensureGoogleDriveAndSheetsSetup } from "@/lib/google-setup";
 
 export type WalkInStatus = "AWAITING_APPROVAL" | "APPROVED" | "DENIED";
@@ -52,15 +56,11 @@ export type ScheduledVisitRow = {
 
 type AnyVisit = WalkInVisitRow | ScheduledVisitRow;
 
-function envOrEmpty(name: string): string {
-  return process.env[name] ?? "";
-}
-
 function getServiceAccountAuthOrThrow() {
-  const clientEmail = envOrEmpty("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
-  const privateKeyRaw = envOrEmpty("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
+  const clientEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
+  const privateKeyRaw = envTrim("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
   if (!clientEmail || !privateKeyRaw) {
-    throw new Error("Google service account no configurada.");
+    throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
   const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
   return new google.auth.JWT({

@@ -1,5 +1,9 @@
 import { google } from "googleapis";
 
+import {
+  envTrim,
+  GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
+} from "@/lib/google-env";
 import { ensureGoogleDriveAndSheetsSetup } from "@/lib/google-setup";
 
 type RecordType = "walk-in" | "programada";
@@ -40,12 +44,10 @@ function envOrEmpty(name: string): string {
 }
 
 function getServiceAccountAuthOrThrow() {
-  // ensureGoogleDriveAndSheetsSetup también requiere service account,
-  // por lo que aquí lo tratamos como “no configurado”.
-  const clientEmail = envOrEmpty("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
-  const privateKeyRaw = envOrEmpty("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
+  const clientEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
+  const privateKeyRaw = envTrim("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
   if (!clientEmail || !privateKeyRaw) {
-    throw new Error("Google service account no configurada.");
+    throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
 
   const privateKey = privateKeyRaw.replace(/\\n/g, "\n");

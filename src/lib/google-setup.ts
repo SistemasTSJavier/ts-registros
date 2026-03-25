@@ -1,6 +1,11 @@
 import { google } from "googleapis";
 import type { JWT } from "google-auth-library";
 
+import {
+  envTrim,
+  GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
+} from "@/lib/google-env";
+
 const COLUMNS = [
   "type",
   "tokenOrId",
@@ -36,10 +41,8 @@ function envOrEmpty(name: string): string {
 }
 
 function getServiceAccountAuth() {
-  const clientEmail = envOrEmpty("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
-  const privateKeyRaw = envOrEmpty(
-    "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
-  );
+  const clientEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
+  const privateKeyRaw = envTrim("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
 
   if (!clientEmail || !privateKeyRaw) return null;
 
@@ -177,9 +180,7 @@ export async function ensureGoogleDriveAndSheetsSetup(): Promise<{
 }> {
   const serviceAuth = getServiceAccountAuth();
   if (!serviceAuth) {
-    throw new Error(
-      "Google no configurado: define GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL y GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.",
-    );
+    throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
 
   const envFolderId = envOrEmpty("GOOGLE_DRIVE_FOLDER_ID") || null;
