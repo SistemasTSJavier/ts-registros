@@ -3,8 +3,12 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { getUserEmail, isAdminEmail } from "@/lib/access";
-import { ensureGoogleDriveAndSheetsSetup } from "@/lib/google-setup";
+import { resolveGoogleSheetsStorage } from "@/lib/google-setup";
 import { SignOutButton } from "@/components/sign-out-button";
+import {
+  getResolvedWorkspaceForUserEmail,
+  hasLegacyGoogleIntegration,
+} from "@/lib/workspace-resolver";
 
 export default async function AdminLayout({
   children,
@@ -21,8 +25,16 @@ export default async function AdminLayout({
     redirect("/");
   }
 
+  const legacy = await hasLegacyGoogleIntegration();
+  if (!legacy) {
+    const ws = await getResolvedWorkspaceForUserEmail(email!);
+    if (!ws) {
+      redirect("/espacio?next=" + encodeURIComponent("/admin"));
+    }
+  }
+
   try {
-    await ensureGoogleDriveAndSheetsSetup();
+    await resolveGoogleSheetsStorage();
   } catch {
     // no bloquear panel admin si falta google
   }

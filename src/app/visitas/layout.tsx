@@ -3,8 +3,12 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { getUserEmail, isOfficerEmail } from "@/lib/access";
-import { ensureGoogleDriveAndSheetsSetup } from "@/lib/google-setup";
+import { resolveGoogleSheetsStorage } from "@/lib/google-setup";
 import { SignOutButton } from "@/components/sign-out-button";
+import {
+  getResolvedWorkspaceForUserEmail,
+  hasLegacyGoogleIntegration,
+} from "@/lib/workspace-resolver";
 
 export default async function VisitasLayout({
   children,
@@ -22,10 +26,16 @@ export default async function VisitasLayout({
     redirect("/");
   }
 
-  // Setup idempotente de Drive/Sheets por sesión autorizada.
-  // Si no está configurado Google, no rompe el panel.
+  const legacy = await hasLegacyGoogleIntegration();
+  if (!legacy) {
+    const ws = await getResolvedWorkspaceForUserEmail(email!);
+    if (!ws) {
+      redirect("/espacio?next=" + encodeURIComponent("/visitas"));
+    }
+  }
+
   try {
-    await ensureGoogleDriveAndSheetsSetup();
+    await resolveGoogleSheetsStorage();
   } catch {
     // Ignorar para no bloquear el acceso al panel.
   }
@@ -66,6 +76,12 @@ export default async function VisitasLayout({
               className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
             >
               Sin cita
+            </Link>
+            <Link
+              href="/espacio?next=/visitas"
+              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
+            >
+              Espacio
             </Link>
             <Link
               href="/"

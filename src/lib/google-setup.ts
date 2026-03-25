@@ -4,7 +4,17 @@ import type { JWT } from "google-auth-library";
 import {
   envTrim,
   GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
+  prepareGoogleServiceAccountPrivateKey,
 } from "@/lib/google-env";
+import { auth } from "@/auth";
+import {
+  loadGoogleIntegrationState,
+  saveGoogleIntegrationState,
+} from "@/lib/google-integration-db";
+import {
+  getDefaultWorkspaceForPublicApi,
+  getResolvedWorkspaceForUserEmail,
+} from "@/lib/workspace-resolver";
 
 const COLUMNS = [
   "type",
@@ -46,12 +56,13 @@ function getServiceAccountAuth() {
 
   if (!clientEmail || !privateKeyRaw) return null;
 
-  const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+  const privateKey = prepareGoogleServiceAccountPrivateKey(privateKeyRaw);
   const jwt = new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
+    // drive.file suele fallar con "permission denied" en carpetas/hojas compartidas con la cuenta de servicio.
     scopes: [
-      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive",
       "https://www.googleapis.com/auth/spreadsheets",
     ],
   });
@@ -71,12 +82,11 @@ function defaultSheetName(): string {
   return envOrEmpty("GOOGLE_SHEETS_SHEET_NAME") || "Hoja 1";
 }
 
-async function ensureDriveFolder(auth: JWT): Promise<string> {
+async function ensureDriveFolder(auth: JWT, folderName?: string): Promise<string> {
   const drive = google.drive({ version: "v3", auth });
 
-  // Si ya existe un folder con el nombre esperado (en root), lo reusamos.
-  // Nota: si tienes varios entornos, usa GOOGLE_DRIVE_FOLDER_ID para evitar colisiones.
-  const q = `mimeType='application/vnd.google-apps.folder' and name='${defaultDriveFolderName().replace(
+  const name = folderName ?? defaultDriveFolderName();
+  const q = `mimeType='application/vnd.google-apps.folder' and name='${name.replace(
     /'/g,
     "\\'",
   )}' and trashed=false`;
@@ -92,7 +102,7 @@ async function ensureDriveFolder(auth: JWT): Promise<string> {
 
   const created = await drive.files.create({
     requestBody: {
-      name: defaultDriveFolderName(),
+      name,
       mimeType: "application/vnd.google-apps.folder",
     },
     fields: "id",
@@ -102,12 +112,16 @@ async function ensureDriveFolder(auth: JWT): Promise<string> {
   return created.data.id;
 }
 
-async function ensureSpreadsheet(auth: JWT, driveFolderId?: string | null): Promise<{
+async function ensureSpreadsheet(
+  auth: JWT,
+  driveFolderId?: string | null,
+  titleOverride?: string,
+): Promise<{
   spreadsheetId: string;
   sheetName: string;
 }> {
   const sheets = google.sheets({ version: "v4", auth });
-  const title = defaultSpreadsheetTitle();
+  const title = titleOverride ?? defaultSpreadsheetTitle();
 
   // Reusa una spreadsheet existente por título (opcional).
   // Si quieres un control estricto, usa GOOGLE_SHEETS_SPREADSHEET_ID en env.
@@ -173,38 +187,189 @@ async function ensureSpreadsheet(auth: JWT, driveFolderId?: string | null): Prom
   return { spreadsheetId, sheetName: chosen };
 }
 
-export async function ensureGoogleDriveAndSheetsSetup(): Promise<{
+/** Usa un spreadsheet ya creado (ID en env). Evita buscar por título y escribe encabezados. */
+export async function ensureSpreadsheetByEnvId(
+  auth: JWT,
+  spreadsheetId: string,
+  preferredSheetName: string,
+): Promise<{ sheetName: string }> {
+  const sheets = google.sheets({ version: "v4", auth });
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.title",
+  });
+  const titles = meta.data.sheets
+    ?.map((s) => s.properties?.title)
+    .filter(Boolean) as string[];
+  const chosen = titles?.includes(preferredSheetName)
+    ? preferredSheetName
+    : (titles?.[0] as string);
+  if (!chosen) {
+    throw new Error(
+      "No se pudo leer la hoja de cálculo (¿GOOGLE_SHEETS_SPREADSHEET_ID correcto y compartida con la cuenta de servicio?).",
+    );
+  }
+
+  const headerRange = `${chosen}!A1:AA1`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: headerRange,
+    valueInputOption: "RAW",
+    requestBody: { values: [Array.from(COLUMNS)] },
+  });
+
+  return { sheetName: chosen };
+}
+
+/**
+ * Reutiliza IDs guardados en Postgres (un solo Drive + una sola hoja para toda la organización).
+ * Los oficiales no tienen carpeta propia: comparten datos; quién entra al panel lo define OFFICER_EMAILS.
+ */
+async function tryLoadIntegrationFromDatabase(jwt: JWT): Promise<{
   driveFolderId: string;
   sheetsSpreadsheetId: string;
   sheetsSheetName: string;
-}> {
+} | null> {
+  const row = await loadGoogleIntegrationState();
+  if (
+    !row?.driveFolderId ||
+    !row.sheetsSpreadsheetId ||
+    !row.sheetsSheetName
+  ) {
+    return null;
+  }
+  try {
+    const { sheetName } = await ensureSpreadsheetByEnvId(
+      jwt,
+      row.sheetsSpreadsheetId,
+      row.sheetsSheetName,
+    );
+    return {
+      driveFolderId: row.driveFolderId,
+      sheetsSpreadsheetId: row.sheetsSpreadsheetId,
+      sheetsSheetName: sheetName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type GoogleSheetsStorage = {
+  driveFolderId: string;
+  sheetsSpreadsheetId: string;
+  sheetsSheetName: string;
+};
+
+/** Crea carpeta + hoja nuevas en el Drive de la cuenta de servicio (nombre único por sufijo). */
+export async function createFreshWorkspaceResources(
+  uniqueSuffix: string,
+): Promise<GoogleSheetsStorage> {
+  const serviceAuth = getServiceAccountAuth();
+  if (!serviceAuth) {
+    throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
+  }
+  const folderName = `Registros-${uniqueSuffix}`;
+  const driveFolderId = await ensureDriveFolder(serviceAuth, folderName);
+  const sheets = await ensureSpreadsheet(
+    serviceAuth,
+    driveFolderId,
+    `Registros-${uniqueSuffix}`,
+  );
+  return {
+    driveFolderId,
+    sheetsSpreadsheetId: sheets.spreadsheetId,
+    sheetsSheetName: sheets.sheetName,
+  };
+}
+
+async function ensureGoogleDriveAndSheetsSetupLegacy(): Promise<GoogleSheetsStorage> {
   const serviceAuth = getServiceAccountAuth();
   if (!serviceAuth) {
     throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
 
-  const envFolderId = envOrEmpty("GOOGLE_DRIVE_FOLDER_ID") || null;
-  const envSpreadsheetId = envOrEmpty("GOOGLE_SHEETS_SPREADSHEET_ID") || null;
+  const envFolderId = envTrim("GOOGLE_DRIVE_FOLDER_ID") || null;
+  const envSpreadsheetId = envTrim("GOOGLE_SHEETS_SPREADSHEET_ID") || null;
   const envSheetName = envOrEmpty("GOOGLE_SHEETS_SHEET_NAME") || defaultSheetName();
 
   if (envFolderId && envSpreadsheetId) {
-    // Asegura encabezados y que la spreadsheet exista/sea accesible.
-    await ensureSpreadsheet(serviceAuth, envFolderId);
+    const { sheetName } = await ensureSpreadsheetByEnvId(
+      serviceAuth,
+      envSpreadsheetId,
+      envSheetName,
+    );
     return {
       driveFolderId: envFolderId,
       sheetsSpreadsheetId: envSpreadsheetId,
-      sheetsSheetName: envSheetName,
+      sheetsSheetName: sheetName,
     };
   }
 
-  // Crea/asegura recursos.
+  const fromDb = await tryLoadIntegrationFromDatabase(serviceAuth);
+  if (fromDb) return fromDb;
+
   const driveFolderId = await ensureDriveFolder(serviceAuth);
   const sheets = await ensureSpreadsheet(serviceAuth, driveFolderId);
+
+  await saveGoogleIntegrationState({
+    driveFolderId,
+    sheetsSpreadsheetId: sheets.spreadsheetId,
+    sheetsSheetName: sheets.sheetName,
+  });
 
   return {
     driveFolderId,
     sheetsSpreadsheetId: sheets.spreadsheetId,
     sheetsSheetName: sheets.sheetName,
   };
+}
+
+/**
+ * Resuelve carpeta+hoja: espacio activo (cookie) → registro público (un solo Workspace o PUBLIC_WORKSPACE_ID) → legado env/BD.
+ */
+export async function resolveGoogleSheetsStorage(): Promise<GoogleSheetsStorage> {
+  const serviceAuth = getServiceAccountAuth();
+  if (!serviceAuth) {
+    throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
+  }
+
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase() ?? null;
+
+  if (email) {
+    const ws = await getResolvedWorkspaceForUserEmail(email);
+    if (ws) {
+      const { sheetName } = await ensureSpreadsheetByEnvId(
+        serviceAuth,
+        ws.sheetsSpreadsheetId,
+        ws.sheetsSheetName,
+      );
+      return {
+        driveFolderId: ws.driveFolderId,
+        sheetsSpreadsheetId: ws.sheetsSpreadsheetId,
+        sheetsSheetName: sheetName,
+      };
+    }
+  }
+
+  const pub = await getDefaultWorkspaceForPublicApi();
+  if (pub) {
+    const { sheetName } = await ensureSpreadsheetByEnvId(
+      serviceAuth,
+      pub.sheetsSpreadsheetId,
+      pub.sheetsSheetName,
+    );
+    return {
+      driveFolderId: pub.driveFolderId,
+      sheetsSpreadsheetId: pub.sheetsSpreadsheetId,
+      sheetsSheetName: sheetName,
+    };
+  }
+
+  return ensureGoogleDriveAndSheetsSetupLegacy();
+}
+
+export async function ensureGoogleDriveAndSheetsSetup(): Promise<GoogleSheetsStorage> {
+  return resolveGoogleSheetsStorage();
 }
 

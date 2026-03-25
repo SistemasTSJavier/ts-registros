@@ -4,8 +4,9 @@ import { randomBytes } from "crypto";
 import {
   envTrim,
   GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
+  prepareGoogleServiceAccountPrivateKey,
 } from "@/lib/google-env";
-import { ensureGoogleDriveAndSheetsSetup } from "@/lib/google-setup";
+import { resolveGoogleSheetsStorage } from "@/lib/google-setup";
 
 export type WalkInStatus = "AWAITING_APPROVAL" | "APPROVED" | "DENIED";
 export type ScheduledStatus = "SCHEDULED" | "CHECKED_IN" | "CHECKED_OUT" | "DENIED";
@@ -62,11 +63,14 @@ function getServiceAccountAuthOrThrow() {
   if (!clientEmail || !privateKeyRaw) {
     throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
-  const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+  const privateKey = prepareGoogleServiceAccountPrivateKey(privateKeyRaw);
   return new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes: [
+      "https://www.googleapis.com/auth/drive",
+      "https://www.googleapis.com/auth/spreadsheets",
+    ],
   });
 }
 
@@ -102,7 +106,7 @@ function normalizeEmails(raw: string): string[] {
 async function getSheetsClient() {
   const auth = getServiceAccountAuthOrThrow();
   const sheets = google.sheets({ version: "v4", auth });
-  const setup = await ensureGoogleDriveAndSheetsSetup();
+  const setup = await resolveGoogleSheetsStorage();
   return { sheets, ...setup };
 }
 

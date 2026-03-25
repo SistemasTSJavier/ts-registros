@@ -3,8 +3,9 @@ import { google } from "googleapis";
 import {
   envTrim,
   GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE,
+  prepareGoogleServiceAccountPrivateKey,
 } from "@/lib/google-env";
-import { ensureGoogleDriveAndSheetsSetup } from "@/lib/google-setup";
+import { resolveGoogleSheetsStorage } from "@/lib/google-setup";
 
 type RecordType = "walk-in" | "programada";
 
@@ -50,12 +51,12 @@ function getServiceAccountAuthOrThrow() {
     throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
   }
 
-  const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+  const privateKey = prepareGoogleServiceAccountPrivateKey(privateKeyRaw);
   return new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
     scopes: [
-      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive",
       "https://www.googleapis.com/auth/spreadsheets",
     ],
   });
@@ -237,7 +238,7 @@ export async function syncGoogleDriveAndSheetsRecord(
   // No bloquea el flujo principal: si falta configuración, lanzamos y lo dejamos
   // capturado desde los server actions.
   const { driveFolderId, sheetsSpreadsheetId, sheetsSheetName } =
-    await ensureGoogleDriveAndSheetsSetup();
+    await resolveGoogleSheetsStorage();
 
   const driveFolder = driveFolderId;
   const sheetName = sheetsSheetName;

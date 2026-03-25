@@ -124,3 +124,27 @@ model GoogleIntegrationState {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
+
+// Espacio de trabajo: una carpeta Drive + una hoja compartida por código entre oficiales.
+model Workspace {
+  id                  String   @id @default(cuid())
+  joinCode            String   @unique
+  driveFolderId       String
+  sheetsSpreadsheetId String
+  sheetsSheetName     String
+  createdByEmail      String?
+  createdAt           DateTime @default(now())
+  members             UserWorkspace[]
+}
+
+model UserWorkspace {
+  id          String    @id @default(cuid())
+  userEmail   String
+  workspaceId String
+  role        String    @default("member")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userEmail, workspaceId])
+  @@index([userEmail])
+}

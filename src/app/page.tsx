@@ -3,6 +3,10 @@ import Link from "next/link";
 import { auth, signIn } from "@/auth";
 import { SignOutButton } from "@/components/sign-out-button";
 import { getUserEmail, isAdminEmail, isOfficerEmail } from "@/lib/access";
+import {
+  getResolvedWorkspaceForUserEmail,
+  hasLegacyGoogleIntegration,
+} from "@/lib/workspace-resolver";
 
 async function signInWithGoogle() {
   "use server";
@@ -14,6 +18,11 @@ export default async function Home() {
   const email = getUserEmail(session);
   const canOfficer = isOfficerEmail(email);
   const canAdmin = isAdminEmail(email);
+  const legacyGoogle = await hasLegacyGoogleIntegration();
+  const workspaceActive =
+    email && (await getResolvedWorkspaceForUserEmail(email));
+  const needsEspacio =
+    Boolean(session?.user) && !legacyGoogle && !workspaceActive;
 
   return (
     <div className="flex min-h-full flex-1 flex-col items-center justify-center bg-zinc-50 px-6 py-16 font-sans dark:bg-zinc-950">
@@ -34,10 +43,32 @@ export default async function Home() {
               <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
                 {session.user.email ?? session.user.name}
               </p>
+              <Link
+                href="/espacio?next=/"
+                className="mt-2 block text-center text-xs text-zinc-500 underline underline-offset-2 dark:text-zinc-400"
+              >
+                Espacio de trabajo (carpeta / código)
+              </Link>
               <div className="mt-4 flex justify-center">
                 <SignOutButton />
               </div>
             </div>
+
+            {needsEspacio ? (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-left text-sm text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-100">
+                <p className="font-medium">Configura tu espacio de trabajo</p>
+                <p className="mt-1 text-sky-900/80 dark:text-sky-200/90">
+                  Crea la carpeta y la hoja en Google o únete con un código de
+                  invitación.
+                </p>
+                <Link
+                  href="/espacio?next=/"
+                  className="mt-3 inline-block rounded-full bg-sky-900 px-4 py-2 text-xs font-medium text-white dark:bg-sky-200 dark:text-sky-950"
+                >
+                  Ir a espacio de trabajo
+                </Link>
+              </div>
+            ) : null}
 
             <div className="text-left">
               <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
