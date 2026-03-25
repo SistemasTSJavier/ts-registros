@@ -129,20 +129,32 @@ async function ensureDriveFolder(
 
   const name = folderName ?? defaultDriveFolderName();
 
-  // Si tenemos un folder padre (compartido con la cuenta de servicio),
-  // creamos ahí directamente para evitar problemas de permisos con "root".
+  // Carpeta padre = carpeta compartida / Shared Drive: crear con `parents: [padre]`
+  // a veces devuelve 403 aunque la SA tenga acceso. Estrategia estable:
+  // 1) crear la carpeta en el Drive de la SA (`root`)
+  // 2) moverla a `parentFolderId` con `files.update`
   if (parentFolderId) {
     const created = await drive.files.create({
       requestBody: {
         name,
         mimeType: "application/vnd.google-apps.folder",
-        parents: [parentFolderId],
+        parents: ["root"],
       },
       fields: "id",
       supportsAllDrives: true,
     });
-    if (!created.data.id) throw new Error("No se pudo crear carpeta en Drive.");
-    return created.data.id;
+    const newId = created.data.id;
+    if (!newId) throw new Error("No se pudo crear carpeta en Drive (paso 1: root).");
+    try {
+      await moveDriveFileIntoFolder(auth, newId, parentFolderId);
+    } catch (e) {
+      throw new Error(
+        `No se pudo mover la carpeta nueva a GOOGLE_DRIVE_FOLDER_ID (paso 2). ` +
+          `La cuenta de servicio necesita poder añadir archivos en esa carpeta (Editor) o ser miembro del Shared Drive. ` +
+          formatGoogleApiError(e),
+      );
+    }
+    return newId;
   }
 
   const q = `mimeType='application/vnd.google-apps.folder' and name='${name.replace(
@@ -175,6 +187,38 @@ async function ensureDriveFolder(
 
   if (!created.data.id) throw new Error("No se pudo crear carpeta en Drive.");
   return created.data.id;
+}
+
+async function assertDriveFolderAccessible(
+  auth: JWT,
+  driveFolderId: string,
+): Promise<void> {
+  const serviceEmail = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
+  const drive = google.drive({ version: "v3", auth });
+  try {
+    const meta = await drive.files.get({
+      fileId: driveFolderId,
+      fields: "id,mimeType",
+      supportsAllDrives: true,
+    });
+    const mimeType = meta.data.mimeType;
+    if (mimeType !== "application/vnd.google-apps.folder") {
+      throw new Error(
+        `GOOGLE_DRIVE_FOLDER_ID no apunta a una carpeta. mimeType recibido: ${String(
+          mimeType,
+        )}.`,
+      );
+    }
+  } catch (e) {
+    const formatted = formatGoogleApiError(e);
+    throw new Error(
+      `GOOGLE_DRIVE_FOLDER_ID no es accesible desde la cuenta de servicio. ` +
+        `Servicio: ${serviceEmail || "(sin email)"} | carpeta: ${driveFolderId}. ` +
+        `Detalle: ${formatted}. ` +
+        `En Drive: comparte esa carpeta con la cuenta de servicio como Editor. ` +
+        `Si es un Shared Drive, agrega la cuenta al Shared Drive (membership) además de permisos.`,
+    );
+  }
 }
 
 /** Mueve un archivo de Drive a una carpeta (quita padres anteriores; evita duplicar padres). */
@@ -244,7 +288,13 @@ async function ensureSpreadsheet(
     spreadsheetId = created.data.spreadsheetId;
 
     if (driveFolderId) {
-      await moveDriveFileIntoFolder(auth, spreadsheetId, driveFolderId);
+      try {
+        await moveDriveFileIntoFolder(auth, spreadsheetId, driveFolderId);
+      } catch (e) {
+        throw new Error(
+          `No se pudo mover la hoja de cálculo a la carpeta del espacio. ${formatGoogleApiError(e)}`,
+        );
+      }
     }
   }
 
@@ -264,12 +314,18 @@ async function ensureSpreadsheet(
 
   // Asegura encabezados en la fila 1.
   const headerRange = `${chosen}!A1:AA1`;
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: headerRange,
-    valueInputOption: "RAW",
-    requestBody: { values: [Array.from(COLUMNS)] },
-  });
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: headerRange,
+      valueInputOption: "RAW",
+      requestBody: { values: [Array.from(COLUMNS)] },
+    });
+  } catch (e) {
+    throw new Error(
+      `No se pudo escribir encabezados en la hoja (Sheets). ${formatGoogleApiError(e)}`,
+    );
+  }
 
   return { spreadsheetId, sheetName: chosen };
 }
@@ -357,11 +413,17 @@ export async function createFreshWorkspaceResources(
   }
   const parentFolderId = envTrim("GOOGLE_DRIVE_FOLDER_ID") || null;
   if (!parentFolderId) {
+    const sa = envTrim("GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL");
     throw new Error(
-      "Permiso insuficiente para crear en Drive 'root'. Para aislar cada servicio, crea (o usa) una carpeta EXCLUSIVA para este servicio y pon su ID en GOOGLE_DRIVE_FOLDER_ID (compártela con la cuenta de servicio: " +
-        "ts-registros@ts-registros.iam.gserviceaccount.com).",
+      "Define GOOGLE_DRIVE_FOLDER_ID: una carpeta exclusiva para este servicio, compartida con la cuenta de servicio" +
+        (sa ? ` (${sa})` : "") +
+        " como Editor.",
     );
   }
+
+  // Valida que la carpeta padre exista y sea visible para la cuenta de servicio.
+  await assertDriveFolderAccessible(serviceAuth, parentFolderId);
+
   const folderName = `Registros-${uniqueSuffix}`;
   try {
     await serviceAuth.authorize();
