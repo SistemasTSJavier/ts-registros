@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import {
   createWorkspaceAction,
   createWorkspaceFromGoogleRefAction,
+  createWorkspaceFromManualIdsAction,
   joinWorkspaceAction,
   selectWorkspaceAction,
 } from "@/actions/workspace-actions";
@@ -104,10 +105,10 @@ export default async function EspacioPage({
             Espacio de trabajo
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
-            Cada cuenta puede tener su propia hoja de cálculo. Para compartir la
-            misma hoja con otras personas, enlaza el ID de la hoja o de la
-            carpeta en Drive (compartidos con la cuenta de servicio del
-            servidor).
+            Inicia sesión con Google para los <strong>correos</strong> (Gmail).
+            Los <strong>registros en Sheets</strong> y archivos en Drive los
+            gestiona la cuenta de servicio del servidor: comparte carpeta y
+            hoja con ese correo como editor, o crea recursos nuevos desde aquí.
           </p>
         </header>
 
@@ -122,6 +123,88 @@ export default async function EspacioPage({
             </p>
           </div>
         ) : null}
+
+        <section
+          className={`mb-6 ${cardClass} ${uiError ? "pointer-events-none opacity-50" : ""}`}
+          aria-hidden={Boolean(uiError)}
+        >
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            IDs manual (recomendado)
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+            Pega el ID de una <strong>carpeta</strong> de Drive (archivos JSON)
+            y el ID de tu <strong>hoja de cálculo</strong> (registros). Opcional:
+            nombre exacto de la pestaña (si no, se usa la primera o «Hoja 1»).
+            Ambos deben estar compartidos con la cuenta de servicio.
+          </p>
+          {saEmail ? (
+            <p className="mt-2 text-xs text-slate-500 dark:text-zinc-500">
+              Comparte carpeta y hoja con:{" "}
+              <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] dark:bg-zinc-800">
+                {saEmail}
+              </code>
+            </p>
+          ) : null}
+          <form
+            action={createWorkspaceFromManualIdsAction}
+            className="mt-5 flex flex-col gap-3"
+          >
+            <input type="hidden" name="next" value={next} />
+            <div>
+              <label
+                htmlFor="manualFolderId"
+                className="mb-1 block text-xs font-medium text-slate-600 dark:text-zinc-400"
+              >
+                ID carpeta Drive
+              </label>
+              <input
+                id="manualFolderId"
+                name="manualFolderId"
+                type="text"
+                required
+                autoComplete="off"
+                placeholder="…/folders/XXXX o solo el ID"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="manualSpreadsheetId"
+                className="mb-1 block text-xs font-medium text-slate-600 dark:text-zinc-400"
+              >
+                ID hoja de cálculo (Sheets)
+              </label>
+              <input
+                id="manualSpreadsheetId"
+                name="manualSpreadsheetId"
+                type="text"
+                required
+                autoComplete="off"
+                placeholder="…/spreadsheets/d/XXXX o solo el ID"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="manualSheetName"
+                className="mb-1 block text-xs font-medium text-slate-600 dark:text-zinc-400"
+              >
+                Nombre de pestaña (opcional)
+              </label>
+              <input
+                id="manualSheetName"
+                name="manualSheetName"
+                type="text"
+                autoComplete="off"
+                placeholder="Hoja 1"
+                className={inputClass}
+              />
+            </div>
+            <button type="submit" className={btnPrimary}>
+              Guardar espacio con estos IDs
+            </button>
+          </form>
+        </section>
 
         {!uiError && memberships.length > 0 ? (
           <section className={`mb-8 ${cardClass}`}>

@@ -7,9 +7,11 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import type { GoogleSheetsStorage } from "@/lib/google-setup";
 import {
   createFreshWorkspaceResources,
   resolveWorkspaceStorageFromGoogleRef,
+  resolveWorkspaceStorageFromManualIds,
 } from "@/lib/google-setup";
 import { dbQuery, dbTx } from "@/lib/db";
 import { WORKSPACE_COOKIE } from "@/lib/workspace-resolver";
@@ -40,106 +42,17 @@ function safeNext(raw: string): string {
 }
 
 function isJoinCodeUniqueViolation(e: unknown): boolean {
-  // Postgres duplicate key
   const code = (e as { code?: string } | null)?.code;
   if (code !== "23505") return false;
   const msg = (e as { message?: string } | null)?.message ?? "";
   return msg.includes("join_code") || msg.includes("joinCode");
 }
 
-export async function createWorkspaceAction(formData: FormData): Promise<void> {
-  const session = await auth();
-  const email = session?.user?.email?.toLowerCase();
-  if (!email) {
-    throw new Error("Inicia sesión primero.");
-  }
-
-  const suffix = randomBytes(4).toString("hex");
-  const next = safeNext(String(formData.get("next") ?? "/"));
-  let storage;
-  try {
-    storage = await createFreshWorkspaceResources(suffix);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "No se pudo crear la carpeta en Google.";
-    redirect(`/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`);
-  }
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const joinCode = generateJoinCode();
-    try {
-      const ws = await dbTx(async (client) => {
-        const createdWsRes = await client.query<
-          { id: string; join_code: string }
-        >(
-          `
-            insert into public.workspace
-              (join_code, drive_folder_id, sheets_spreadsheet_id, sheets_sheet_name, created_by_email)
-            values ($1, $2, $3, $4, $5)
-            returning id, join_code
-          `,
-          [
-            joinCode,
-            storage.driveFolderId,
-            storage.sheetsSpreadsheetId,
-            storage.sheetsSheetName,
-            email,
-          ],
-        );
-        const createdWs = createdWsRes.rows[0];
-
-        await client.query(
-          `
-            insert into public.user_workspace (user_email, workspace_id, role)
-            values ($1, $2, 'owner')
-          `,
-          [email, createdWs.id],
-        );
-
-        return createdWs;
-      });
-
-      const cookieStore = await cookies();
-      cookieStore.set(WORKSPACE_COOKIE, ws.id, cookieOptions());
-      revalidatePath("/");
-      redirect("/espacio/exito?c=" + encodeURIComponent(ws.join_code));
-    } catch (e) {
-      if (isRedirectError(e)) throw e;
-      if (isJoinCodeUniqueViolation(e)) continue;
-      const msg = e instanceof Error ? e.message : "No se pudo guardar el espacio.";
-      redirect(`/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`);
-    }
-  }
-
-  throw new Error(
-    "No se pudo asignar un código único al espacio. Reintenta en unos segundos.",
-  );
-}
-
-export async function createWorkspaceFromGoogleRefAction(
-  formData: FormData,
+async function insertWorkspaceAndExit(
+  storage: GoogleSheetsStorage,
+  email: string,
+  next: string,
 ): Promise<void> {
-  const session = await auth();
-  const email = session?.user?.email?.toLowerCase();
-  if (!email) {
-    throw new Error("Inicia sesión primero.");
-  }
-
-  const next = safeNext(String(formData.get("next") ?? "/"));
-  const raw = String(formData.get("googleRef") ?? "").trim();
-
-  let storage;
-  try {
-    storage = await resolveWorkspaceStorageFromGoogleRef(raw);
-  } catch (e) {
-    const msg =
-      e instanceof Error
-        ? e.message
-        : "No se pudo validar el recurso en Google.";
-    redirect(
-      `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
-    );
-  }
-
   for (let attempt = 0; attempt < 8; attempt++) {
     const joinCode = generateJoinCode();
     try {
@@ -191,6 +104,88 @@ export async function createWorkspaceFromGoogleRefAction(
   throw new Error(
     "No se pudo asignar un código único al espacio. Reintenta en unos segundos.",
   );
+}
+
+export async function createWorkspaceAction(formData: FormData): Promise<void> {
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase();
+  if (!email) {
+    throw new Error("Inicia sesión primero.");
+  }
+
+  const suffix = randomBytes(4).toString("hex");
+  const next = safeNext(String(formData.get("next") ?? "/"));
+  let storage: GoogleSheetsStorage;
+  try {
+    storage = await createFreshWorkspaceResources(suffix);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "No se pudo crear la carpeta en Google.";
+    redirect(`/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`);
+  }
+
+  await insertWorkspaceAndExit(storage, email, next);
+}
+
+export async function createWorkspaceFromManualIdsAction(
+  formData: FormData,
+): Promise<void> {
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase();
+  if (!email) {
+    throw new Error("Inicia sesión primero.");
+  }
+
+  const next = safeNext(String(formData.get("next") ?? "/"));
+  const folderIdRaw = String(formData.get("manualFolderId") ?? "");
+  const spreadsheetIdRaw = String(formData.get("manualSpreadsheetId") ?? "");
+  const sheetNameRaw = String(formData.get("manualSheetName") ?? "").trim();
+
+  let storage: GoogleSheetsStorage;
+  try {
+    storage = await resolveWorkspaceStorageFromManualIds({
+      folderIdRaw,
+      spreadsheetIdRaw,
+      sheetNameRaw: sheetNameRaw || undefined,
+    });
+  } catch (e) {
+    const msg =
+      e instanceof Error
+        ? e.message
+        : "No se pudo validar los IDs en Google.";
+    redirect(
+      `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
+    );
+  }
+
+  await insertWorkspaceAndExit(storage, email, next);
+}
+
+export async function createWorkspaceFromGoogleRefAction(
+  formData: FormData,
+): Promise<void> {
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase();
+  if (!email) {
+    throw new Error("Inicia sesión primero.");
+  }
+
+  const next = safeNext(String(formData.get("next") ?? "/"));
+  const raw = String(formData.get("googleRef") ?? "").trim();
+
+  let storage: GoogleSheetsStorage;
+  try {
+    storage = await resolveWorkspaceStorageFromGoogleRef(raw);
+  } catch (e) {
+    const msg =
+      e instanceof Error
+        ? e.message
+        : "No se pudo validar el recurso en Google.";
+    redirect(
+      `/espacio?createError=${encodeURIComponent(msg)}&next=${encodeURIComponent(next)}`,
+    );
+  }
+
+  await insertWorkspaceAndExit(storage, email, next);
 }
 
 export async function joinWorkspaceAction(formData: FormData): Promise<void> {

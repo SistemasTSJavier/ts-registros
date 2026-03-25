@@ -525,6 +525,88 @@ export async function resolveWorkspaceStorageFromGoogleRef(
   );
 }
 
+/**
+ * Valida IDs pegados manualmente: carpeta (JSON/archivos) + hoja de cálculo (registros).
+ * Ambos deben estar compartidos con la cuenta de servicio como editor.
+ * El correo de envío sigue siendo el de la sesión Google (Gmail API), no la SA.
+ */
+export async function resolveWorkspaceStorageFromManualIds(input: {
+  folderIdRaw: string;
+  spreadsheetIdRaw: string;
+  sheetNameRaw?: string;
+}): Promise<GoogleSheetsStorage> {
+  const serviceAuth = getServiceAccountAuth();
+  if (!serviceAuth) {
+    throw new Error(GOOGLE_SERVICE_ACCOUNT_MISSING_USER_MESSAGE);
+  }
+
+  const folderParsed =
+    extractGoogleDriveFileId(input.folderIdRaw.trim()) ??
+    input.folderIdRaw.trim();
+  const spreadsheetParsed =
+    extractGoogleDriveFileId(input.spreadsheetIdRaw.trim()) ??
+    input.spreadsheetIdRaw.trim();
+
+  if (!folderParsed || !spreadsheetParsed) {
+    throw new Error(
+      "Indica el ID de la carpeta y el de la hoja (puedes pegarlos desde la URL de Drive).",
+    );
+  }
+
+  await serviceAuth.authorize();
+  const drive = google.drive({ version: "v3", auth: serviceAuth });
+
+  let folderMeta;
+  try {
+    folderMeta = await drive.files.get({
+      fileId: folderParsed,
+      fields: "id,mimeType,name",
+      supportsAllDrives: true,
+    });
+  } catch (e) {
+    throw new Error(
+      `No se pudo leer la carpeta (${folderParsed}). ${formatGoogleApiError(e)}`,
+    );
+  }
+  if (folderMeta.data.mimeType !== "application/vnd.google-apps.folder") {
+    throw new Error(
+      "El primer valor no es una carpeta de Google Drive. Revisa el ID de la carpeta.",
+    );
+  }
+
+  let sheetFileMeta;
+  try {
+    sheetFileMeta = await drive.files.get({
+      fileId: spreadsheetParsed,
+      fields: "id,mimeType,name",
+      supportsAllDrives: true,
+    });
+  } catch (e) {
+    throw new Error(
+      `No se pudo leer la hoja (${spreadsheetParsed}). ${formatGoogleApiError(e)}`,
+    );
+  }
+  if (sheetFileMeta.data.mimeType !== "application/vnd.google-apps.spreadsheet") {
+    throw new Error(
+      "El segundo valor no es una hoja de cálculo de Google. Revisa el ID del Sheets.",
+    );
+  }
+
+  const preferred =
+    input.sheetNameRaw?.trim() || defaultSheetName();
+  const { sheetName } = await ensureSpreadsheetByEnvId(
+    serviceAuth,
+    spreadsheetParsed,
+    preferred,
+  );
+
+  return {
+    driveFolderId: folderParsed,
+    sheetsSpreadsheetId: spreadsheetParsed,
+    sheetsSheetName: sheetName,
+  };
+}
+
 /** Crea carpeta + hoja nuevas en el Drive de la cuenta de servicio (nombre único por sufijo). */
 export async function createFreshWorkspaceResources(
   uniqueSuffix: string,
