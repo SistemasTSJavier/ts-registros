@@ -112,6 +112,27 @@ async function ensureDriveFolder(auth: JWT, folderName?: string): Promise<string
   return created.data.id;
 }
 
+/** Mueve un archivo de Drive a una carpeta (quita padres anteriores; evita duplicar padres). */
+async function moveDriveFileIntoFolder(
+  auth: JWT,
+  fileId: string,
+  driveFolderId: string,
+): Promise<void> {
+  const drive = google.drive({ version: "v3", auth });
+  const meta = await drive.files.get({
+    fileId,
+    fields: "parents",
+  });
+  const parents = meta.data.parents ?? [];
+  if (parents.includes(driveFolderId)) return;
+  await drive.files.update({
+    fileId,
+    addParents: driveFolderId,
+    removeParents: parents.length > 0 ? parents.join(",") : undefined,
+    fields: "id,parents",
+  });
+}
+
 async function ensureSpreadsheet(
   auth: JWT,
   driveFolderId?: string | null,
@@ -151,13 +172,7 @@ async function ensureSpreadsheet(
     spreadsheetId = created.data.spreadsheetId;
 
     if (driveFolderId) {
-      // Asegura que esté dentro de la carpeta.
-      const drive = google.drive({ version: "v3", auth });
-      await drive.files.update({
-        fileId: spreadsheetId,
-        addParents: driveFolderId,
-        fields: "id,parents",
-      });
+      await moveDriveFileIntoFolder(auth, spreadsheetId, driveFolderId);
     }
   }
 

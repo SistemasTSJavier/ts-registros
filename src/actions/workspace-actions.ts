@@ -1,6 +1,7 @@
 "use server";
 
 import { randomBytes } from "crypto";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
@@ -34,6 +35,15 @@ function normalizeJoinCode(raw: string): string {
 function safeNext(raw: string): string {
   const n = raw.trim();
   return n.startsWith("/") && !n.startsWith("//") ? n : "/";
+}
+
+function isJoinCodeCollision(e: unknown): boolean {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") {
+    return false;
+  }
+  const t = e.meta?.target;
+  if (t === "joinCode") return true;
+  return Array.isArray(t) && t.includes("joinCode");
 }
 
 export async function createWorkspaceAction(formData: FormData): Promise<void> {
@@ -75,10 +85,16 @@ export async function createWorkspaceAction(formData: FormData): Promise<void> {
       redirect("/espacio/exito?c=" + encodeURIComponent(ws.joinCode));
     } catch (e) {
       if (isRedirectError(e)) throw e;
+      if (isJoinCodeCollision(e)) continue;
+      throw e instanceof Error
+        ? e
+        : new Error("No se pudo guardar el espacio en la base de datos.");
     }
   }
 
-  throw new Error("No se pudo completar. Reintenta en unos segundos.");
+  throw new Error(
+    "No se pudo asignar un código único al espacio. Reintenta en unos segundos.",
+  );
 }
 
 export async function joinWorkspaceAction(formData: FormData): Promise<void> {
