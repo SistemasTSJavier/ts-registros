@@ -29,19 +29,37 @@ export function ScheduledVisitForm() {
       <div
         className={`${formCard} border-emerald-200/90 bg-emerald-50/90 text-center text-emerald-950 dark:border-emerald-900/40 dark:bg-emerald-950/35 dark:text-emerald-100`}
       >
-        <p className="font-semibold">Registro guardado y notificaciones enviadas.</p>
+        <p className="font-semibold">Registro guardado.</p>
+        {state.mailWarning ? (
+          <p className="mt-3 rounded-xl border border-amber-300/70 bg-amber-100/70 px-4 py-3 text-left text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-100">
+            Se guardó la visita, pero falló el envío de correos.
+            <br />
+            <span className="font-mono text-xs">{state.mailWarning}</span>
+          </p>
+        ) : (
+          <p className="mt-3 text-sm opacity-90">Notificaciones enviadas correctamente.</p>
+        )}
         <p className="mt-3 text-sm opacity-90">
           ID de registro:{" "}
           <code className="rounded-lg bg-white/70 px-2 py-0.5 font-mono text-xs dark:bg-black/30">
             {state.id}
           </code>
         </p>
-        <p className="mt-2 text-sm opacity-90">
-          Token de acceso:{" "}
-          <code className="rounded-lg bg-white/70 px-2 py-0.5 font-mono text-xs dark:bg-black/30">
+        <p className="mt-4 text-xs font-medium uppercase tracking-wider opacity-80">
+          Codigo de acceso para recepcion
+        </p>
+        <div className="mt-2 rounded-xl border border-emerald-300/70 bg-white/70 px-3 py-3 dark:border-emerald-800/70 dark:bg-black/20">
+          <code className="block break-all font-mono text-base font-semibold sm:text-lg">
             {state.token}
           </code>
-        </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(state.token)}
+          className="mt-3 rounded-lg border border-emerald-400/70 bg-white/80 px-3 py-1.5 text-sm font-medium text-emerald-900 transition hover:bg-white dark:border-emerald-700 dark:bg-zinc-900/70 dark:text-emerald-200 dark:hover:bg-zinc-900"
+        >
+          Copiar codigo
+        </button>
         <div className="mt-6 flex justify-center">
           <Image
             alt="QR de acceso"
@@ -52,6 +70,9 @@ export function ScheduledVisitForm() {
             className="rounded-xl border border-emerald-200/50 dark:border-emerald-800/50"
           />
         </div>
+        <p className="mt-2 text-xs opacity-80">
+          Muestra este QR al oficial para escaneo rapido.
+        </p>
         <p className="mt-6 text-sm">
           <a
             className="font-medium text-emerald-800 underline-offset-4 hover:underline dark:text-emerald-200"

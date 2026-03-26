@@ -108,10 +108,80 @@ function normalizeEmails(raw: string): string[] {
   return out;
 }
 
+const SHEET_PROGRAMADAS = "Programadas";
+const SHEET_SIN_CITA = "Sin cita";
+const SPANISH_COLUMNS = [
+  "tipo",
+  "tokenOId",
+  "idRegistro",
+  "creadoEn",
+  "actualizadoEn",
+  "nombreVisitante",
+  "empresaVisitante",
+  "motivo",
+  "estado",
+  "resueltoEn",
+  "correoNotificacion",
+  "idArchivoDrive",
+  "fechaVisita",
+  "horaInicio",
+  "horaFin",
+  "referenciaIdentificacion",
+  "correosNotificar",
+  "correoAprobacion",
+  "curpOId",
+  "asunto",
+  "responsable",
+  "acompanantes",
+  "aQuienVisita",
+  "identificacion",
+  "horaCheckIn",
+  "horaCheckOut",
+  "correoOficial",
+] as const;
+
+async function ensureVisitSheet(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  title: string,
+): Promise<void> {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.title",
+  });
+  const titles =
+    meta.data.sheets?.map((s) => s.properties?.title).filter(Boolean) ?? [];
+
+  if (!titles.includes(title)) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{ addSheet: { properties: { title } } }],
+      },
+    });
+  }
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${title}!A1:AA1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [Array.from(SPANISH_COLUMNS)] },
+  });
+}
+
+async function ensureVisitsSheets(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+): Promise<void> {
+  await ensureVisitSheet(sheets, spreadsheetId, SHEET_PROGRAMADAS);
+  await ensureVisitSheet(sheets, spreadsheetId, SHEET_SIN_CITA);
+}
+
 async function getSheetsClient() {
   const auth = getServiceAccountAuthOrThrow();
   const sheets = google.sheets({ version: "v4", auth });
   const setup = await resolveGoogleSheetsStorage();
+  await ensureVisitsSheets(sheets, setup.sheetsSpreadsheetId);
   return { sheets, ...setup };
 }
 
@@ -120,6 +190,7 @@ async function getSheetsClientForToken(tokenOrId: string) {
   const sheets = google.sheets({ version: "v4", auth });
   const mapped = await getSheetTokenLookup(tokenOrId);
   if (mapped) {
+    await ensureVisitsSheets(sheets, mapped.sheets_spreadsheet_id);
     const { sheetName } = await ensureSpreadsheetByEnvId(
       auth,
       mapped.sheets_spreadsheet_id,
@@ -132,6 +203,7 @@ async function getSheetsClientForToken(tokenOrId: string) {
     };
   }
   const setup = await resolveGoogleSheetsStorage();
+  await ensureVisitsSheets(sheets, setup.sheetsSpreadsheetId);
   return { sheets, ...setup };
 }
 
@@ -225,17 +297,19 @@ function rowToVisit(values: unknown[]): AnyVisit | null {
   };
 }
 
-async function findRowIndexByTokenOrId(tokenOrId: string) {
-  const { sheets, sheetsSpreadsheetId, sheetsSheetName } =
-    await getSheetsClientForToken(tokenOrId);
+async function findRowIndexByTokenOrIdInSheet(
+  tokenOrId: string,
+  targetSheetName: string,
+) {
+  const { sheets, sheetsSpreadsheetId } = await getSheetsClientForToken(tokenOrId);
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetsSpreadsheetId,
-    range: `${sheetsSheetName}!B2:B`,
+    range: `${targetSheetName}!B2:B`,
     majorDimension: "COLUMNS",
   });
   const col = res.data.values?.[0] ?? [];
   const idx = col.findIndex((v: unknown) => String(v ?? "") === tokenOrId);
-  return { sheets, sheetsSpreadsheetId, sheetsSheetName, idx };
+  return { sheets, sheetsSpreadsheetId, sheetsSheetName: targetSheetName, idx };
 }
 
 function buildRowValues(v: AnyVisit): string[] {
@@ -309,7 +383,7 @@ export async function createWalkInVisitInSheets(input: {
   approvalEmail: string;
   curpOrId: string | null;
 }): Promise<WalkInVisitRow> {
-  const { sheets, sheetsSpreadsheetId, sheetsSheetName } = await getSheetsClient();
+  const { sheets, sheetsSpreadsheetId } = await getSheetsClient();
   const now = new Date();
   const token = randomBytes(32).toString("base64url");
   const row: WalkInVisitRow = {
@@ -330,12 +404,12 @@ export async function createWalkInVisitInSheets(input: {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetsSpreadsheetId,
-    range: `${sheetsSheetName}!A:AA`,
+    range: `${SHEET_SIN_CITA}!A:AA`,
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [buildRowValues(row)] },
   });
 
-  await saveSheetTokenLookup(row.tokenOrId, sheetsSpreadsheetId, sheetsSheetName);
+  await saveSheetTokenLookup(row.tokenOrId, sheetsSpreadsheetId, SHEET_SIN_CITA);
 
   return row;
 }
@@ -355,7 +429,7 @@ export async function createScheduledVisitInSheets(input: {
   idReference: string | null;
   notifyEmails: string[];
 }): Promise<ScheduledVisitRow> {
-  const { sheets, sheetsSpreadsheetId, sheetsSheetName } = await getSheetsClient();
+  const { sheets, sheetsSpreadsheetId } = await getSheetsClient();
   const now = new Date();
   const id = newId();
   const row: ScheduledVisitRow = {
@@ -387,19 +461,19 @@ export async function createScheduledVisitInSheets(input: {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetsSpreadsheetId,
-    range: `${sheetsSheetName}!A:AA`,
+    range: `${SHEET_PROGRAMADAS}!A:AA`,
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [buildRowValues(row)] },
   });
 
-  await saveSheetTokenLookup(row.tokenOrId, sheetsSpreadsheetId, sheetsSheetName);
+  await saveSheetTokenLookup(row.tokenOrId, sheetsSpreadsheetId, SHEET_PROGRAMADAS);
 
   return row;
 }
 
 export async function updateWalkInStatusByToken(token: string, status: WalkInStatus) {
   const { sheets, sheetsSpreadsheetId, sheetsSheetName, idx } =
-    await findRowIndexByTokenOrId(token);
+    await findRowIndexByTokenOrIdInSheet(token, SHEET_SIN_CITA);
   if (idx === -1) return { ok: false as const, error: "Enlace no válido o expirado." };
 
   const rowNumber = 2 + idx;
@@ -426,7 +500,7 @@ export async function updateScheduledStatusById(
   officerEmail: string,
 ) {
   const { sheets, sheetsSpreadsheetId, sheetsSheetName, idx } =
-    await findRowIndexByTokenOrId(visitId);
+    await findRowIndexByTokenOrIdInSheet(visitId, SHEET_PROGRAMADAS);
   if (idx === -1) return { ok: false as const, error: "Visita no encontrada." };
 
   const rowNumber = 2 + idx;
@@ -453,7 +527,7 @@ export async function scanScheduledAccessToken(
   officerEmail: string,
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
   const { sheets, sheetsSpreadsheetId, sheetsSheetName, idx } =
-    await findRowIndexByTokenOrId(token);
+    await findRowIndexByTokenOrIdInSheet(token, SHEET_PROGRAMADAS);
   if (idx === -1) return { ok: false, error: "Token no encontrado." };
 
   const rowNumber = 2 + idx;
@@ -506,7 +580,7 @@ export async function scanScheduledAccessToken(
 
 export async function getWalkInByToken(token: string): Promise<WalkInVisitRow | null> {
   const { sheets, sheetsSpreadsheetId, sheetsSheetName, idx } =
-    await findRowIndexByTokenOrId(token);
+    await findRowIndexByTokenOrIdInSheet(token, SHEET_SIN_CITA);
   if (idx === -1) return null;
   const rowNumber = 2 + idx;
   const rowRes = await sheets.spreadsheets.values.get({
@@ -520,8 +594,8 @@ export async function getWalkInByToken(token: string): Promise<WalkInVisitRow | 
 }
 
 export async function listRecentWalkIn(limit = 50): Promise<WalkInVisitRow[]> {
-  const { sheetsSpreadsheetId, sheetsSheetName } = await getSheetsClient();
-  const rows = await readAllRows(sheetsSheetName, sheetsSpreadsheetId);
+  const { sheetsSpreadsheetId } = await getSheetsClient();
+  const rows = await readAllRows(SHEET_SIN_CITA, sheetsSpreadsheetId);
   const out: WalkInVisitRow[] = [];
   for (const r of rows) {
     const v = rowToVisit(r);
@@ -532,8 +606,8 @@ export async function listRecentWalkIn(limit = 50): Promise<WalkInVisitRow[]> {
 }
 
 export async function listScheduledInWindow(start: Date, end: Date): Promise<ScheduledVisitRow[]> {
-  const { sheetsSpreadsheetId, sheetsSheetName } = await getSheetsClient();
-  const rows = await readAllRows(sheetsSheetName, sheetsSpreadsheetId);
+  const { sheetsSpreadsheetId } = await getSheetsClient();
+  const rows = await readAllRows(SHEET_PROGRAMADAS, sheetsSpreadsheetId);
   const out: ScheduledVisitRow[] = [];
   for (const r of rows) {
     const v = rowToVisit(r);

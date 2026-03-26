@@ -24,7 +24,7 @@ export default async function AdminLayout({
   }
 
   const email = getUserEmail(session);
-  if (!isAdminEmail(email)) {
+  if (!(await isAdminEmail(email))) {
     redirect("/");
   }
 
@@ -62,17 +62,20 @@ export default async function AdminLayout({
             </div>
           </div>
           <nav className="mt-5 flex flex-wrap gap-1 border-t border-slate-100 pt-5 dark:border-zinc-800">
-            <Link href="/admin" className={navLink}>
-              Inicio admin
-            </Link>
             <Link href="/visitas" className={navLink}>
-              Panel oficial
+              Resumen
+            </Link>
+            <Link href="/visitas/programadas" className={navLink}>
+              Programadas
+            </Link>
+            <Link href="/visitas/sin-programacion" className={navLink}>
+              Sin cita
             </Link>
             <Link href="/espacio?next=/admin#ids-manuales" className={navLink}>
               Espacio
             </Link>
-            <Link href="/" className={navLink}>
-              App
+            <Link href="/admin" className={navLink}>
+              Admin
             </Link>
           </nav>
         </header>

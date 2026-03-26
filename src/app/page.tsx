@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { auth, signIn } from "@/auth";
 import { SignOutButton } from "@/components/sign-out-button";
-import { getUserEmail, isAdminEmail, isOfficerEmail } from "@/lib/access";
+import { getUserEmail, isOfficerEmail } from "@/lib/access";
 import {
   getResolvedWorkspaceForUserEmail,
   hasLegacyGoogleIntegration,
@@ -16,8 +16,7 @@ async function signInWithGoogle() {
 export default async function Home() {
   const session = await auth();
   const email = getUserEmail(session);
-  const canOfficer = isOfficerEmail(email);
-  const canAdmin = isAdminEmail(email);
+  const canOfficer = await isOfficerEmail(email);
   const legacyGoogle = await hasLegacyGoogleIntegration();
   const workspaceActive =
     email && (await getResolvedWorkspaceForUserEmail(email));
@@ -107,29 +106,7 @@ export default async function Home() {
                     . Pide acceso al administrador.
                   </li>
                 )}
-                {canAdmin ? (
-                  <li>
-                    <Link
-                      href="/admin"
-                      className="block rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-900 shadow-sm transition hover:border-slate-300 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
-                    >
-                      Administración
-                    </Link>
-                  </li>
-                ) : null}
               </ul>
-            </div>
-
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-500">
-                Formularios
-              </p>
-              <Link
-                href="/registro"
-                className="mt-3 block rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-900 shadow-sm transition hover:border-slate-300 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-600"
-              >
-                Registrar visita (requiere sesión)
-              </Link>
             </div>
           </div>
         ) : (

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { SignOutButton } from "@/components/sign-out-button";
-import { getUserEmail, isOfficerEmail } from "@/lib/access";
+import { getUserEmail, isAdminEmail, isOfficerEmail } from "@/lib/access";
 import { resolveGoogleSheetsStorage } from "@/lib/google-setup";
 import {
   getResolvedWorkspaceForUserEmail,
@@ -25,7 +25,9 @@ export default async function VisitasLayout({
     );
   }
   const email = getUserEmail(session);
-  if (!isOfficerEmail(email)) {
+  const isOfficer = await isOfficerEmail(email);
+  const isAdmin = await isAdminEmail(email);
+  if (!isOfficer && !isAdmin) {
     redirect("/");
   }
 
@@ -69,21 +71,25 @@ export default async function VisitasLayout({
             <Link href="/visitas/programadas" className={navLink}>
               Programadas
             </Link>
-            <Link href="/visitas/programadas/escaneo" className={navLink}>
-              Escaneo
-            </Link>
             <Link href="/visitas/sin-programacion" className={navLink}>
               Sin cita
             </Link>
+            {isOfficer ? (
+              <Link href="/visitas/programadas/escaneo" className={navLink}>
+                Escaneo
+              </Link>
+            ) : null}
             <Link href="/espacio?next=/visitas#ids-manuales" className={navLink}>
               Espacio
             </Link>
             <Link href="/" className={navLink}>
               Inicio
             </Link>
-            <Link href="/admin" className={navLink}>
-              Admin
-            </Link>
+            {isAdmin ? (
+              <Link href="/admin" className={navLink}>
+                Admin
+              </Link>
+            ) : null}
           </nav>
         </header>
         {children}

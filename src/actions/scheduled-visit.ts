@@ -10,7 +10,7 @@ import { sendMailHtml } from "@/lib/email";
 import { createScheduledVisitInSheets } from "@/lib/sheets-visits";
 
 export type ScheduledVisitActionState =
-  | { ok: true; id: string; token: string }
+  | { ok: true; id: string; token: string; mailWarning?: string }
   | { ok: false; error: string };
 
 function parseEmailList(raw: string): string[] {
@@ -130,14 +130,21 @@ export async function createScheduledVisit(
       <p><a href="${panelUrl}">Ver visitas programadas (oficiales)</a></p>
     `;
 
-    await sendMailHtml({
-      to: notifyEmails,
-      subject: `Visita programada: ${visitorFullName}`,
-      html,
-    });
+    let mailWarning: string | undefined;
+    try {
+      await sendMailHtml({
+        to: notifyEmails,
+        subject: `Visita programada: ${visitorFullName}`,
+        html,
+      });
+    } catch (mailErr) {
+      mailWarning = formatGoogleApiErrorForUser(mailErr);
+      const detail = mailErr instanceof Error ? mailErr.message : String(mailErr);
+      console.error("[createScheduledVisit][mail]", detail);
+    }
 
     revalidatePath("/visitas/programadas");
-    return { ok: true, id: visit.recordId, token: visit.tokenOrId };
+    return { ok: true, id: visit.recordId, token: visit.tokenOrId, mailWarning };
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     console.error("[createScheduledVisit]", detail);
