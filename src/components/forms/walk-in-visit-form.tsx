@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { createWorker } from "tesseract.js";
 
 import { createWalkInVisit, type WalkInActionState } from "@/actions/walk-in-visit";
@@ -20,9 +20,37 @@ export function WalkInVisitForm() {
   const [state, formAction, pending] = useActionState(createWalkInVisit, initial);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrHint, setOcrHint] = useState<string | null>(null);
+  const [attachedDocName, setAttachedDocName] = useState<string>("");
+  const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null);
+  const lastPreviewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (lastPreviewUrlRef.current) {
+        URL.revokeObjectURL(lastPreviewUrlRef.current);
+      }
+    };
+  }, []);
 
   const onIneFile = useCallback(async (file: File | null) => {
-    if (!file) return;
+    if (!file) {
+      setAttachedDocName("");
+      if (lastPreviewUrlRef.current) {
+        URL.revokeObjectURL(lastPreviewUrlRef.current);
+        lastPreviewUrlRef.current = null;
+      }
+      setAttachedPreviewUrl(null);
+      return;
+    }
+
+    setAttachedDocName(file.name);
+    if (lastPreviewUrlRef.current) {
+      URL.revokeObjectURL(lastPreviewUrlRef.current);
+    }
+    const preview = URL.createObjectURL(file);
+    lastPreviewUrlRef.current = preview;
+    setAttachedPreviewUrl(preview);
+
     setOcrHint(null);
     setOcrBusy(true);
     try {
@@ -94,20 +122,39 @@ export function WalkInVisitForm() {
 
         <div>
           <label className={labelClass} htmlFor="inePhoto">
-            Foto de identificación (INE)
+            Escaneo de identificación (INE o licencia)
           </label>
           <input
             accept="image/*"
             capture="environment"
             className={inputClass}
             id="inePhoto"
+            name="inePhoto"
             type="file"
+            required
             onChange={(e) => onIneFile(e.target.files?.[0] ?? null)}
           />
+          {attachedDocName ? (
+            <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
+              Archivo adjunto: <span className="font-medium">{attachedDocName}</span>
+            </p>
+          ) : null}
+          {attachedPreviewUrl ? (
+            <div className="mt-3">
+              <p className="mb-2 text-xs text-slate-500 dark:text-zinc-400">
+                Vista previa del adjunto:
+              </p>
+              <img
+                src={attachedPreviewUrl}
+                alt="Vista previa de identificación adjunta"
+                className="max-h-56 w-full rounded-xl border border-slate-200 object-contain dark:border-zinc-700"
+              />
+            </div>
+          ) : null}
           <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
             {ocrBusy
-              ? "Leyendo imagen…"
-              : "Opcional: ayuda a prellenar datos; el oficial debe validar contra la credencial física."}
+              ? "Leyendo escaneo…"
+              : "Adjunta un escaneo claro de la tarjeta. El oficial debe validar con el documento físico."}
           </p>
           {ocrHint ? (
             <p className="mt-2 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">

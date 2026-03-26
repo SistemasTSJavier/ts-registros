@@ -192,6 +192,23 @@ export function ScheduledVisitForm() {
         </div>
 
         <div>
+          <label className={labelClass} htmlFor="idPhoto">
+            Foto de identificación
+          </label>
+          <input
+            accept="image/*"
+            capture="environment"
+            className={inputClass}
+            id="idPhoto"
+            name="idPhoto"
+            type="file"
+          />
+          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">
+            Puedes tomarla al momento o subirla desde galería para verificación en recepción.
+          </p>
+        </div>
+
+        <div>
           <label className={labelClass} htmlFor="identification">
             Identificación
           </label>
@@ -227,9 +244,12 @@ export function ScheduledVisitForm() {
             className={textareaClass}
             id="notifyEmails"
             name="notifyEmails"
-            rows={3}
-            placeholder="uno@empresa.com, otro@empresa.com"
+            rows={4}
+            placeholder={"uno@empresa.com\njefe@empresa.com; recepcion@empresa.com"}
           />
+          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">
+            Puedes pegar varios correos separados por coma, punto y coma o en líneas nuevas.
+          </p>
         </div>
 
         <button disabled={pending} type="submit" className={submitClass}>

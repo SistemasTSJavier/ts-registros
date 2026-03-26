@@ -24,44 +24,119 @@ function pdfEscapeText(s: string): string {
   return normalizeToAscii(s).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
+function textWidthApprox(s: string, fontSize: number): number {
+  // Aproximación para Helvetica Type1 (suficiente para centrar títulos y recortar columnas).
+  return normalizeToAscii(s).length * fontSize * 0.52;
+}
+
+function truncateToWidth(s: string, fontSize: number, maxWidth: number): string {
+  const t = normalizeToAscii(s);
+  if (textWidthApprox(t, fontSize) <= maxWidth) return t;
+  let out = t;
+  while (out.length > 1 && textWidthApprox(`${out}...`, fontSize) > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return `${out}...`;
+}
+
 function buildSinglePagePdf(args: {
   title: string;
   subtitle?: string;
-  lines: string[];
+  rows: Array<{ label: string; value: string }>;
 }): Buffer {
-  const title = pdfEscapeText(args.title);
-  const subtitle = args.subtitle ? pdfEscapeText(args.subtitle) : "";
-  const lines = args.lines.map((l) => pdfEscapeText(l));
+  const titleRaw = normalizeToAscii(args.title);
+  const subtitleRaw = args.subtitle ? normalizeToAscii(args.subtitle) : "";
+  const rows = args.rows.map((r) => ({
+    label: normalizeToAscii(r.label),
+    value: normalizeToAscii(r.value),
+  }));
 
   // Página estándar: letter-like (72dpi) 612x792.
   const pageW = 612;
   const pageH = 792;
-
-  // Diseño básico: margen izquierdo 48, arriba y espaciado.
-  let y = pageH - 72;
-  const x = 48;
-  const leading = 16;
+  const margin = 48;
+  const tableW = pageW - margin * 2;
+  const labelW = 175;
+  const rowH = 22;
+  const titleSize = 18;
+  const subtitleSize = 11;
+  const textSize = 10;
 
   const contentParts: string[] = [];
+  const titleX = (pageW - textWidthApprox(titleRaw, titleSize)) / 2;
+  let yTop = pageH - 72;
   contentParts.push("BT");
-  contentParts.push("/F1 18 Tf");
-  contentParts.push(`${x} ${y} Td`);
-  contentParts.push(`(${title}) Tj`);
-  y -= leading * 1.3;
-
-  if (subtitle) {
-    contentParts.push("/F1 11 Tf");
-    contentParts.push(`${0} ${-leading} Td`);
-    contentParts.push(`(${subtitle}) Tj`);
-    y -= leading;
-  }
-
-  contentParts.push("/F1 11 Tf");
-  for (const line of lines) {
-    contentParts.push(`${0} ${-leading} Td`);
-    contentParts.push(`(${line}) Tj`);
-  }
+  contentParts.push(`/F1 ${titleSize} Tf`);
+  contentParts.push(`${titleX.toFixed(2)} ${yTop.toFixed(2)} Td`);
+  contentParts.push(`(${pdfEscapeText(titleRaw)}) Tj`);
   contentParts.push("ET");
+  yTop -= 24;
+
+  if (subtitleRaw) {
+    const subX = (pageW - textWidthApprox(subtitleRaw, subtitleSize)) / 2;
+    contentParts.push("BT");
+    contentParts.push(`/F1 ${subtitleSize} Tf`);
+    contentParts.push(`${subX.toFixed(2)} ${yTop.toFixed(2)} Td`);
+    contentParts.push(`(${pdfEscapeText(subtitleRaw)}) Tj`);
+    contentParts.push("ET");
+    yTop -= 22;
+  }
+
+  // Encabezado de tabla.
+  const x0 = margin;
+  const x1 = margin + labelW;
+  const x2 = margin + tableW;
+  const headerY = yTop;
+  const tableStartY = headerY - rowH;
+
+  // Bordes encabezado.
+  contentParts.push(`${x0} ${headerY} m ${x2} ${headerY} l S`);
+  contentParts.push(`${x0} ${tableStartY} m ${x2} ${tableStartY} l S`);
+  contentParts.push(`${x0} ${headerY} m ${x0} ${tableStartY} l S`);
+  contentParts.push(`${x1} ${headerY} m ${x1} ${tableStartY} l S`);
+  contentParts.push(`${x2} ${headerY} m ${x2} ${tableStartY} l S`);
+
+  contentParts.push("BT");
+  contentParts.push(`/F1 ${textSize} Tf`);
+  contentParts.push(`${(x0 + 8).toFixed(2)} ${(tableStartY + 7).toFixed(2)} Td`);
+  contentParts.push(`(${pdfEscapeText("Campo")}) Tj`);
+  contentParts.push("ET");
+
+  contentParts.push("BT");
+  contentParts.push(`/F1 ${textSize} Tf`);
+  contentParts.push(`${(x1 + 8).toFixed(2)} ${(tableStartY + 7).toFixed(2)} Td`);
+  contentParts.push(`(${pdfEscapeText("Valor")}) Tj`);
+  contentParts.push("ET");
+
+  // Filas de datos.
+  let currentTop = tableStartY;
+  const valueMaxW = x2 - x1 - 16;
+  const labelMaxW = x1 - x0 - 16;
+  for (const row of rows) {
+    const nextY = currentTop - rowH;
+    contentParts.push(`${x0} ${nextY} m ${x2} ${nextY} l S`);
+    contentParts.push(`${x0} ${currentTop} m ${x0} ${nextY} l S`);
+    contentParts.push(`${x1} ${currentTop} m ${x1} ${nextY} l S`);
+    contentParts.push(`${x2} ${currentTop} m ${x2} ${nextY} l S`);
+
+    const label = truncateToWidth(row.label, textSize, labelMaxW);
+    const value = truncateToWidth(row.value || "-", textSize, valueMaxW);
+
+    contentParts.push("/F1 11 Tf");
+    contentParts.push("BT");
+    contentParts.push(`/F1 ${textSize} Tf`);
+    contentParts.push(`${(x0 + 8).toFixed(2)} ${(nextY + 7).toFixed(2)} Td`);
+    contentParts.push(`(${pdfEscapeText(label)}) Tj`);
+    contentParts.push("ET");
+
+    contentParts.push("BT");
+    contentParts.push(`/F1 ${textSize} Tf`);
+    contentParts.push(`${(x1 + 8).toFixed(2)} ${(nextY + 7).toFixed(2)} Td`);
+    contentParts.push(`(${pdfEscapeText(value)}) Tj`);
+    contentParts.push("ET");
+
+    currentTop = nextY;
+  }
 
   const contentStream = contentParts.join("\n") + "\n";
   const contentBytes = Buffer.from(contentStream, "utf8");
@@ -146,21 +221,21 @@ export function buildWalkInVisitPdf(args: {
     ? `Resuelto: ${args.resolvedAt.toLocaleString("es-MX")}`
     : "Resuelto: (pendiente)";
 
-  const lines: string[] = [
-    `Token: ${args.token}`,
-    `ID registro: ${args.recordId}`,
-    `Estado: ${args.status}`,
-    `Persona: ${args.visitorFullName}`,
-    `Empresa: ${args.visitorCompany}`,
-    `Motivo: ${args.reason}`,
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "Token", value: args.token },
+    { label: "ID registro", value: args.recordId },
+    { label: "Estado", value: args.status },
+    { label: "Persona", value: args.visitorFullName },
+    { label: "Empresa", value: args.visitorCompany },
+    { label: "Motivo", value: args.reason },
+    { label: "CURP/ID", value: args.curpOrId ?? "-" },
+    { label: "Correo aprobación", value: args.approvalEmail },
+    { label: "Resuelto", value: resolvedLine.replace("Resuelto: ", "") },
   ];
-  if (args.curpOrId) lines.push(`CURP/ID: ${args.curpOrId}`);
-  lines.push(`Correo aprobación: ${args.approvalEmail}`);
-  lines.push(resolvedLine);
 
   return buildSinglePagePdf({
     title: args.title ?? "Registro de entrada sin programación",
-    lines,
+    rows,
   });
 }
 
@@ -179,24 +254,23 @@ export function buildScheduledVisitPdf(args: {
   visitEndTime: string;
   notifyEmailsCsv: string;
 }): Buffer {
-  const lines: string[] = [
-    `ID registro: ${args.recordId}`,
-    `Estado: ${args.status}`,
-    `Persona: ${args.visitorFullName}`,
-    `Empresa: ${args.visitorCompany}`,
-    `Fecha: ${args.visitDate.toLocaleDateString("es-MX")}`,
-    `Horario: ${args.visitStartTime} - ${args.visitEndTime}`,
-    `Motivo: ${args.reason}`,
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "ID registro", value: args.recordId },
+    { label: "Estado", value: args.status },
+    { label: "Persona", value: args.visitorFullName },
+    { label: "Empresa", value: args.visitorCompany },
+    { label: "Fecha", value: args.visitDate.toLocaleDateString("es-MX") },
+    { label: "Horario", value: `${args.visitStartTime} - ${args.visitEndTime}` },
+    { label: "Motivo", value: args.reason },
+    { label: "Identificación a verificar", value: args.idReference ?? "-" },
+    { label: "Notificar a", value: args.notifyEmailsCsv },
+    { label: "Creado", value: args.createdAt.toLocaleString("es-MX") },
+    { label: "Actualizado", value: args.updatedAt.toLocaleString("es-MX") },
   ];
-
-  if (args.idReference) lines.push(`Identificación a verificar: ${args.idReference}`);
-  lines.push(`Notificar a: ${args.notifyEmailsCsv}`);
-  lines.push(`Creado: ${args.createdAt.toLocaleString("es-MX")}`);
-  lines.push(`Actualizado: ${args.updatedAt.toLocaleString("es-MX")}`);
 
   return buildSinglePagePdf({
     title: args.title ?? "Visita programada",
-    lines,
+    rows,
   });
 }
 

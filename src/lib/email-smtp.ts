@@ -19,6 +19,11 @@ export async function sendMailHtmlViaSmtp(params: {
   html: string;
   /** Quien inició sesión (opcional); los destinatarios pueden responder a esa persona. */
   replyTo?: string;
+  attachments?: Array<{
+    filename: string;
+    contentType?: string;
+    content: Buffer;
+  }>;
 }): Promise<void> {
   const host = envTrim("SMTP_HOST");
   const user = envTrim("SMTP_USER");
@@ -52,6 +57,7 @@ export async function sendMailHtmlViaSmtp(params: {
     to,
     subject: params.subject,
     html: params.html,
+    ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
   });
 }

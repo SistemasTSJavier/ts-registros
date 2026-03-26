@@ -8,6 +8,7 @@ import { getAppBaseUrl } from "@/lib/app-url";
 import { formatGoogleApiErrorForUser } from "@/lib/google-user-error";
 import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
 import { sendMailHtml } from "@/lib/email";
+import { buildWalkInVisitPdf } from "@/lib/simple-pdf";
 import { createWalkInVisitInSheets, getWalkInByToken, updateWalkInStatusByToken } from "@/lib/sheets-visits";
 
 export type WalkInActionState =
@@ -76,27 +77,39 @@ export async function createWalkInVisit(
 
     const base = getAppBaseUrl();
     const decisionUrl = `${base}/aprobar-entrada/${encodeURIComponent(visit.tokenOrId)}`;
+    const appUrl = base;
 
-    const idLine = curpOrId
-      ? `<li><strong>CURP / ID:</strong> ${escapeHtml(curpOrId)}</li>`
-      : "";
+    const pdf = buildWalkInVisitPdf({
+      title: `Entrada sin cita - ${visitorFullName}`,
+      token: visit.tokenOrId,
+      recordId: visit.recordId,
+      status: visit.status,
+      resolvedAt: visit.resolvedAt,
+      visitorFullName,
+      visitorCompany,
+      reason,
+      curpOrId,
+      approvalEmail,
+    });
 
     const html = `
-      <p><strong>Entrada sin programación</strong> — requiere tu decisión.</p>
-      <ul>
-        <li><strong>Persona:</strong> ${escapeHtml(visitorFullName)}</li>
-        <li><strong>Empresa:</strong> ${escapeHtml(visitorCompany)}</li>
-        <li><strong>Motivo:</strong> ${escapeHtml(reason)}</li>
-        ${idLine}
-      </ul>
-      <p>El oficial en sitio debe haber comprobado que los datos coinciden con la identificación.</p>
+      <p><strong>Entrada sin cita registrada.</strong></p>
+      <p>Adjunto va el PDF del registro.</p>
       <p><a href="${decisionUrl}">Abrir página de aprobación o denegación</a></p>
+      <p><a href="${appUrl}">Abrir AppWeb</a></p>
     `;
 
     await sendMailHtml({
       to: approvalEmail,
-      subject: `Aprobar entrada: ${visitorFullName}`,
+      subject: `Entrada sin cita: ${visitorFullName}`,
       html,
+      attachments: [
+        {
+          filename: `entrada-sin-cita-${visit.tokenOrId}.pdf`,
+          contentType: "application/pdf",
+          content: pdf,
+        },
+      ],
     });
 
     revalidatePath("/visitas/sin-programacion");
@@ -212,10 +225,3 @@ export async function denyWalkInFromPanelAction(
   if (!r.ok) throw new Error(r.error);
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}

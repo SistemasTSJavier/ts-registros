@@ -8,24 +8,32 @@ import { getAppBaseUrl } from "@/lib/app-url";
 import { formatGoogleApiErrorForUser } from "@/lib/google-user-error";
 import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
 import { sendMailHtml } from "@/lib/email";
+import { buildScheduledVisitPdf } from "@/lib/simple-pdf";
 import { createScheduledVisitInSheets } from "@/lib/sheets-visits";
 
 export type ScheduledVisitActionState =
   | { ok: true; id: string; token: string; mailWarning?: string }
   | { ok: false; error: string };
 
-function parseEmailList(raw: string): string[] {
-  const parts = raw.split(/[\s,;]+/);
+const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseEmailList(raw: string): { valid: string[]; invalid: string[] } {
+  const parts = raw.split(/[\n,;]+/);
   const seen = new Set<string>();
-  const out: string[] = [];
+  const valid: string[] = [];
+  const invalid: string[] = [];
   for (const p of parts) {
-    const e = p.trim().toLowerCase();
-    if (!e || !e.includes("@")) continue;
+    const e = p.trim().toLowerCase().replace(/[<>]/g, "");
+    if (!e) continue;
+    if (!SIMPLE_EMAIL_RE.test(e)) {
+      invalid.push(e);
+      continue;
+    }
     if (seen.has(e)) continue;
     seen.add(e);
-    out.push(e);
+    valid.push(e);
   }
-  return out;
+  return { valid, invalid };
 }
 
 export async function createScheduledVisit(
@@ -60,9 +68,10 @@ export async function createScheduledVisit(
     const visitTo = String(formData.get("visitTo") ?? "").trim();
     const companions = String(formData.get("companions") ?? "").trim();
     const idReference = identification || null;
-    const notifyEmails = parseEmailList(
+    const parsedEmails = parseEmailList(
       String(formData.get("notifyEmails") ?? ""),
     );
+    const notifyEmails = parsedEmails.valid;
 
     if (!subject || !responsible || !visitorFullName || !visitorCompany || !visitTo) {
       return { ok: false, error: "Completa asunto, responsable, visitante, compañía y a quién visita." };
@@ -73,10 +82,26 @@ export async function createScheduledVisit(
     if (!reason) {
       return { ok: false, error: "Indica el motivo de la visita." };
     }
+    if (parsedEmails.invalid.length > 0) {
+      const preview = parsedEmails.invalid.slice(0, 3).join(", ");
+      return {
+        ok: false,
+        error:
+          `Hay correos inválidos: ${preview}. ` +
+          "Sepáralos por coma, punto y coma o salto de línea.",
+      };
+    }
     if (notifyEmails.length === 0) {
       return {
         ok: false,
-        error: "Agrega al menos un correo para notificar (separados por coma).",
+        error:
+          "Agrega al menos un correo válido para notificar (coma, punto y coma o salto de línea).",
+      };
+    }
+    if (notifyEmails.length > 30) {
+      return {
+        ok: false,
+        error: "Máximo 30 correos por registro para evitar bloqueos de envío.",
       };
     }
 
@@ -119,31 +144,44 @@ export async function createScheduledVisit(
 
     const base = getAppBaseUrl();
     const panelUrl = `${base}/visitas/programadas`;
+    const appUrl = base;
 
-    const refBlock = idReference
-      ? `<p><strong>Identificación a verificar:</strong> ${escapeHtml(idReference)}</p>`
-      : "";
+    const pdf = buildScheduledVisitPdf({
+      title: `Cita programada - ${visitorFullName}`,
+      recordId: visit.recordId,
+      status: visit.status,
+      createdAt: visit.createdAt,
+      updatedAt: visit.updatedAt,
+      visitorFullName: visit.visitorFullName,
+      visitorCompany: visit.visitorCompany,
+      reason: visit.reason,
+      idReference: visit.idReference,
+      visitDate: new Date(`${visit.visitDate}T12:00:00`),
+      visitStartTime: visit.visitStartTime,
+      visitEndTime: visit.visitEndTime,
+      notifyEmailsCsv: notifyEmails.join(", "),
+    });
 
     const html = `
-      <p>Se registró una <strong>visita programada</strong>.</p>
-      <ul>
-        <li><strong>Persona:</strong> ${escapeHtml(visitorFullName)}</li>
-        <li><strong>Empresa:</strong> ${escapeHtml(visitorCompany)}</li>
-        <li><strong>Fecha:</strong> ${escapeHtml(visitDateStr)}</li>
-        <li><strong>Horario:</strong> ${escapeHtml(visitStartTime)} – ${escapeHtml(visitEndTime)}</li>
-        <li><strong>Motivo:</strong> ${escapeHtml(reason)}</li>
-      </ul>
-      ${refBlock}
-      <p>En recepción, la persona debe mostrar su identificación y el oficial debe comprobar que coincide con lo registrado antes de permitir el ingreso.</p>
+      <p><strong>Cita programada registrada.</strong></p>
+      <p>Adjunto va el PDF oficial del registro.</p>
       <p><a href="${panelUrl}">Ver visitas programadas (oficiales)</a></p>
+      <p><a href="${appUrl}">Abrir AppWeb</a></p>
     `;
 
     let mailWarning: string | undefined;
     try {
       await sendMailHtml({
         to: notifyEmails,
-        subject: `Visita programada: ${visitorFullName}`,
+        subject: `Cita programada: ${visitorFullName}`,
         html,
+        attachments: [
+          {
+            filename: `cita-programada-${visit.tokenOrId}.pdf`,
+            contentType: "application/pdf",
+            content: pdf,
+          },
+        ],
       });
     } catch (mailErr) {
       mailWarning = formatGoogleApiErrorForUser(mailErr);

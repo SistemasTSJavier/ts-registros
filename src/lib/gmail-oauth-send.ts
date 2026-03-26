@@ -26,18 +26,56 @@ function buildRfc2822(params: {
   to: string | string[];
   subject: string;
   html: string;
+  attachments?: Array<{
+    filename: string;
+    contentType?: string;
+    content: Buffer;
+  }>;
 }): string {
   const toHeader = Array.isArray(params.to) ? params.to.join(", ") : params.to;
-  const htmlB64 = Buffer.from(params.html, "utf8").toString("base64");
+  const attachments = params.attachments ?? [];
+  if (attachments.length === 0) {
+    const htmlB64 = Buffer.from(params.html, "utf8").toString("base64");
+    return [
+      `From: ${params.from}`,
+      `To: ${toHeader}`,
+      `Subject: ${encodeSubject(params.subject)}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: base64`,
+      "",
+      htmlB64.replace(/(.{76})/g, "$1\r\n").trimEnd(),
+    ].join("\r\n");
+  }
+
+  const boundary = `mix_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const parts: string[] = [];
+  parts.push(`--${boundary}`);
+  parts.push(`Content-Type: text/html; charset=UTF-8`);
+  parts.push(`Content-Transfer-Encoding: base64`);
+  parts.push("");
+  parts.push(Buffer.from(params.html, "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n").trimEnd());
+
+  for (const a of attachments) {
+    const safeName = a.filename.replace(/"/g, "");
+    const contentType = a.contentType || "application/octet-stream";
+    parts.push(`--${boundary}`);
+    parts.push(`Content-Type: ${contentType}; name="${safeName}"`);
+    parts.push(`Content-Disposition: attachment; filename="${safeName}"`);
+    parts.push(`Content-Transfer-Encoding: base64`);
+    parts.push("");
+    parts.push(a.content.toString("base64").replace(/(.{76})/g, "$1\r\n").trimEnd());
+  }
+  parts.push(`--${boundary}--`);
+
   return [
     `From: ${params.from}`,
     `To: ${toHeader}`,
     `Subject: ${encodeSubject(params.subject)}`,
     `MIME-Version: 1.0`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: base64`,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",
-    htmlB64.replace(/(.{76})/g, "$1\r\n").trimEnd(),
+    parts.join("\r\n"),
   ].join("\r\n");
 }
 
@@ -198,6 +236,11 @@ export async function sendMailHtmlViaGmailWithJwt(
     to: string | string[];
     subject: string;
     html: string;
+    attachments?: Array<{
+      filename: string;
+      contentType?: string;
+      content: Buffer;
+    }>;
   },
 ): Promise<void> {
   if (!jwt.email) {
@@ -223,6 +266,7 @@ export async function sendMailHtmlViaGmailWithJwt(
     to: params.to,
     subject: params.subject,
     html: params.html,
+    attachments: params.attachments,
   });
   const raw = Buffer.from(mime)
     .toString("base64")

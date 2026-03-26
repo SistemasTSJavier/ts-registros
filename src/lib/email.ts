@@ -17,6 +17,11 @@ export async function sendMailHtml(params: {
   to: string | string[];
   subject: string;
   html: string;
+  attachments?: Array<{
+    filename: string;
+    contentType?: string;
+    content: Buffer;
+  }>;
 }): Promise<void> {
   if (isSmtpConfigured()) {
     const session = await auth();
