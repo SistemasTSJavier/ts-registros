@@ -1,5 +1,11 @@
 import Link from "next/link";
 
+import { auth } from "@/auth";
+import {
+  approveWalkInFromPanelAction,
+  denyWalkInFromPanelAction,
+} from "@/actions/walk-in-visit";
+import { getUserEmail, isAdminEmail } from "@/lib/access";
 import { listRecentWalkIn } from "@/lib/sheets-visits";
 
 const statusLabel: Record<string, string> = {
@@ -15,6 +21,9 @@ const pdfBtn =
   "inline-flex rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white";
 
 export default async function VisitasSinProgramacionPage() {
+  const session = await auth();
+  const email = getUserEmail(session);
+  const canAdmin = await isAdminEmail(email);
   const rows = await listRecentWalkIn(40);
 
   return (
@@ -101,14 +110,38 @@ export default async function VisitasSinProgramacionPage() {
                 </div>
               </dl>
               <div className="mt-5 border-t border-slate-100 pt-5 dark:border-zinc-800">
-                <a
-                  href={`/api/visitas/walk-in/pdf/${encodeURIComponent(
-                    v.tokenOrId,
-                  )}`}
-                  className={pdfBtn}
-                >
-                  Generar PDF
-                </a>
+                <div className="flex flex-wrap items-center gap-2">
+                  <a
+                    href={`/api/visitas/walk-in/pdf/${encodeURIComponent(
+                      v.tokenOrId,
+                    )}`}
+                    className={pdfBtn}
+                  >
+                    Generar PDF
+                  </a>
+                  {canAdmin && v.status === "AWAITING_APPROVAL" ? (
+                    <>
+                      <form action={approveWalkInFromPanelAction}>
+                        <input type="hidden" name="token" value={v.tokenOrId} />
+                        <button
+                          type="submit"
+                          className="inline-flex rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-950/50"
+                        >
+                          Aprobar entrada
+                        </button>
+                      </form>
+                      <form action={denyWalkInFromPanelAction}>
+                        <input type="hidden" name="token" value={v.tokenOrId} />
+                        <button
+                          type="submit"
+                          className="inline-flex rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-800 shadow-sm transition hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200 dark:hover:bg-rose-950/50"
+                        >
+                          Denegar entrada
+                        </button>
+                      </form>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </li>
           ))}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { auth } from "@/auth";
+import { isAdminEmail } from "@/lib/access";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { formatGoogleApiErrorForUser } from "@/lib/google-user-error";
 import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
@@ -177,6 +178,38 @@ export async function denyWalkInToken(token: string): Promise<WalkInDecisionStat
   revalidatePath(`/aprobar-entrada/${encodeURIComponent(token)}`);
   revalidatePath("/visitas/sin-programacion");
   return { ok: true };
+}
+
+export async function approveWalkInFromPanelAction(
+  formData: FormData,
+): Promise<void> {
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase() ?? null;
+  if (!(await isAdminEmail(email))) {
+    throw new Error("Solo una cuenta admin puede aprobar entradas desde el panel.");
+  }
+
+  const token = String(formData.get("token") ?? "").trim();
+  if (!token) throw new Error("Falta token de entrada.");
+
+  const r = await approveWalkInToken(token);
+  if (!r.ok) throw new Error(r.error);
+}
+
+export async function denyWalkInFromPanelAction(
+  formData: FormData,
+): Promise<void> {
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase() ?? null;
+  if (!(await isAdminEmail(email))) {
+    throw new Error("Solo una cuenta admin puede denegar entradas desde el panel.");
+  }
+
+  const token = String(formData.get("token") ?? "").trim();
+  if (!token) throw new Error("Falta token de entrada.");
+
+  const r = await denyWalkInToken(token);
+  if (!r.ok) throw new Error(r.error);
 }
 
 function escapeHtml(s: string): string {

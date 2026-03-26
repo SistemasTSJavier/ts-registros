@@ -7,8 +7,8 @@ export default function EscaneoProgramadasPage() {
         Escaneo de cita
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
-        Primer escaneo registra entrada; el segundo, salida. El token queda
-        consumido al completar el ciclo.
+        Usa el mismo token QR físico de la visita: primer escaneo = entrada,
+        segundo escaneo = salida. El estado se guarda automáticamente en Sheets.
       </p>
       <div className="mt-8">
         <ScheduledTokenScanner />

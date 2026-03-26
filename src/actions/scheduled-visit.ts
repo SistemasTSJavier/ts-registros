@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { auth } from "@/auth";
+import { isAdminEmail } from "@/lib/access";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { formatGoogleApiErrorForUser } from "@/lib/google-user-error";
 import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
@@ -37,6 +38,13 @@ export async function createScheduledVisit(
       return {
         ok: false,
         error: "Inicia sesión con Google para registrar visitas y enviar correos desde tu cuenta.",
+      };
+    }
+    if (!(await isAdminEmail(session.user.email.toLowerCase()))) {
+      return {
+        ok: false,
+        error:
+          "Solo una cuenta admin puede registrar visitas programadas. El oficial solo valida y procesa ingresos.",
       };
     }
 

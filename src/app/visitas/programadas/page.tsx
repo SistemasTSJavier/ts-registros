@@ -1,3 +1,7 @@
+import Link from "next/link";
+
+import { auth } from "@/auth";
+import { getUserEmail, isAdminEmail } from "@/lib/access";
 import { ScheduledVisitActions } from "@/components/scheduled-visit-actions";
 import { scheduledVisitListWindow } from "@/lib/visit-window";
 import { listScheduledInWindow } from "@/lib/sheets-visits";
@@ -25,6 +29,10 @@ const pdfBtn =
   "inline-flex rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white";
 
 export default async function VisitasProgramadasPage() {
+  const session = await auth();
+  const email = getUserEmail(session);
+  const canAdmin = await isAdminEmail(email);
+
   const { start, end } = scheduledVisitListWindow();
   const visits = await listScheduledInWindow(start, end);
 
@@ -37,6 +45,16 @@ export default async function VisitasProgramadasPage() {
         Compara la identificación física con los datos registrados antes de
         permitir el ingreso.
       </p>
+      {canAdmin ? (
+        <div className="mt-6">
+          <Link
+            href="/registro/programada"
+            className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-600"
+          >
+            Registrar visita programada
+          </Link>
+        </div>
+      ) : null}
 
       {visits.length === 0 ? (
         <p className="mt-12 text-center text-sm text-slate-500 dark:text-zinc-400">

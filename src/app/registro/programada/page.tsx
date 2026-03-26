@@ -1,6 +1,16 @@
+import { redirect } from "next/navigation";
+
+import { auth } from "@/auth";
+import { getUserEmail, isAdminEmail } from "@/lib/access";
 import { ScheduledVisitForm } from "@/components/forms/scheduled-visit-form";
 
-export default function ProgramadaPage() {
+export default async function ProgramadaPage() {
+  const session = await auth();
+  const email = getUserEmail(session);
+  if (!(await isAdminEmail(email))) {
+    redirect("/visitas/programadas");
+  }
+
   return (
     <div>
       <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-zinc-50">
