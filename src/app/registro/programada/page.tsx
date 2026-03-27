@@ -3,11 +3,13 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getUserEmail, isAdminEmail } from "@/lib/access";
 import { ScheduledVisitForm } from "@/components/forms/scheduled-visit-form";
+import { getResolvedWorkspaceForUserEmail } from "@/lib/workspace-resolver";
 
 export default async function ProgramadaPage() {
   const session = await auth();
   const email = getUserEmail(session);
-  if (!(await isAdminEmail(email))) {
+  const ws = email ? await getResolvedWorkspaceForUserEmail(email) : null;
+  if (!(await isAdminEmail(email, ws?.workspaceId))) {
     redirect("/visitas/programadas");
   }
 

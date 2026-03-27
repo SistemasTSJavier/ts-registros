@@ -13,6 +13,7 @@ import {
   resolveWorkspaceStorageFromGoogleRef,
   resolveWorkspaceStorageFromManualIds,
 } from "@/lib/google-setup";
+import { logTenantAudit } from "@/lib/tenant-audit";
 import { dbQuery, dbTx } from "@/lib/db";
 import { WORKSPACE_COOKIE } from "@/lib/workspace-resolver";
 
@@ -98,12 +99,34 @@ async function insertWorkspaceAndExit(
           `,
           [email, createdWs.id],
         );
+        await client.query(
+          `
+            insert into public.user_workspace_role (workspace_id, user_email, role, is_active)
+            values
+              ($1, $2, 'admin', true),
+              ($1, $2, 'officer', true)
+            on conflict (workspace_id, user_email, role)
+            do update set is_active = true
+          `,
+          [createdWs.id, email],
+        );
 
         return createdWs;
       });
 
       const cookieStore = await cookies();
       cookieStore.set(WORKSPACE_COOKIE, ws.id, cookieOptions());
+      await logTenantAudit({
+        workspaceId: ws.id,
+        actorEmail: email,
+        eventType: "workspace.created",
+        payload: {
+          joinCode: ws.join_code,
+          driveFolderId: storage.driveFolderId,
+          sheetsSpreadsheetId: storage.sheetsSpreadsheetId,
+          sheetsSheetName: storage.sheetsSheetName,
+        },
+      });
       revalidatePath("/");
       redirect("/espacio/exito?c=" + encodeURIComponent(ws.join_code));
     } catch (e) {
@@ -233,9 +256,24 @@ export async function joinWorkspaceAction(formData: FormData): Promise<void> {
     `,
     [email, workspaceId],
   );
+  await dbQuery(
+    `
+      insert into public.user_workspace_role (workspace_id, user_email, role, is_active)
+      values ($1, $2, 'officer', true)
+      on conflict (workspace_id, user_email, role)
+      do update set is_active = true
+    `,
+    [workspaceId, email],
+  );
 
   const cookieStore = await cookies();
   cookieStore.set(WORKSPACE_COOKIE, workspaceId, cookieOptions());
+  await logTenantAudit({
+    workspaceId,
+    actorEmail: email,
+    eventType: "workspace.joined",
+    payload: { method: "join_code" },
+  });
   revalidatePath("/");
   redirect(next);
 }
@@ -269,6 +307,11 @@ export async function selectWorkspaceAction(formData: FormData): Promise<void> {
 
   const cookieStore = await cookies();
   cookieStore.set(WORKSPACE_COOKIE, workspaceId, cookieOptions());
+  await logTenantAudit({
+    workspaceId,
+    actorEmail: email,
+    eventType: "workspace.selected",
+  });
   revalidatePath("/");
   redirect(next);
 }

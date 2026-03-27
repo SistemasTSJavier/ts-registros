@@ -7,6 +7,7 @@ import {
 } from "@/actions/walk-in-visit";
 import { getUserEmail, isAdminEmail } from "@/lib/access";
 import { listRecentWalkIn } from "@/lib/sheets-visits";
+import { getResolvedWorkspaceForUserEmail } from "@/lib/workspace-resolver";
 
 const statusLabel: Record<string, string> = {
   AWAITING_APPROVAL: "Esperando decisión por correo",
@@ -23,7 +24,8 @@ const pdfBtn =
 export default async function VisitasSinProgramacionPage() {
   const session = await auth();
   const email = getUserEmail(session);
-  const canAdmin = await isAdminEmail(email);
+  const ws = email ? await getResolvedWorkspaceForUserEmail(email) : null;
+  const canAdmin = await isAdminEmail(email, ws?.workspaceId);
   const rows = await listRecentWalkIn(40);
 
   return (

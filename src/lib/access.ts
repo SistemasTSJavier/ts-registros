@@ -16,7 +16,10 @@ export function getUserEmail(session: Session | null): string | null {
   return (session?.user?.email ?? session?.user?.name ?? null)?.toLowerCase() ?? null;
 }
 
-async function hasRoleInDb(email: string, role: "officer" | "admin"): Promise<boolean> {
+async function hasGlobalRoleInDb(
+  email: string,
+  role: "officer" | "admin",
+): Promise<boolean> {
   try {
     const rows = await dbQuery<{ ok: number }>(
       `
@@ -35,13 +38,45 @@ async function hasRoleInDb(email: string, role: "officer" | "admin"): Promise<bo
   }
 }
 
-export async function isOfficerEmail(email: string | null): Promise<boolean> {
+async function hasTenantRoleInDb(
+  email: string,
+  role: "officer" | "admin",
+  tenantId?: string | null,
+): Promise<boolean> {
+  if (!tenantId) return false;
+  try {
+    const rows = await dbQuery<{ ok: number }>(
+      `
+        select 1 as ok
+        from public.user_workspace_role r
+        where lower(r.user_email) = lower($1)
+          and r.workspace_id = $2
+          and r.role = $3
+          and r.is_active = true
+        limit 1
+      `,
+      [email, tenantId, role],
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function isOfficerEmail(
+  email: string | null,
+  tenantId?: string | null,
+): Promise<boolean> {
   if (!email) return false;
   const emailLower = email.toLowerCase();
 
-  // Prioridad: roles en BD.
-  if (await hasRoleInDb(emailLower, "officer")) return true;
-  if (await hasRoleInDb(emailLower, "admin")) return true; // admin también opera panel oficial
+  // Prioridad: roles por tenant.
+  if (await hasTenantRoleInDb(emailLower, "officer", tenantId)) return true;
+  if (await hasTenantRoleInDb(emailLower, "admin", tenantId)) return true; // admin también opera panel oficial
+
+  // Compatibilidad: roles globales (tabla existente).
+  if (await hasGlobalRoleInDb(emailLower, "officer")) return true;
+  if (await hasGlobalRoleInDb(emailLower, "admin")) return true;
 
   // Fallback legacy por variables de entorno.
   const list = parseEmails(process.env.OFFICER_EMAILS);
@@ -49,11 +84,15 @@ export async function isOfficerEmail(email: string | null): Promise<boolean> {
   return list.has(emailLower);
 }
 
-export async function isAdminEmail(email: string | null): Promise<boolean> {
+export async function isAdminEmail(
+  email: string | null,
+  tenantId?: string | null,
+): Promise<boolean> {
   if (!email) return false;
   const emailLower = email.toLowerCase();
 
-  if (await hasRoleInDb(emailLower, "admin")) return true;
+  if (await hasTenantRoleInDb(emailLower, "admin", tenantId)) return true;
+  if (await hasGlobalRoleInDb(emailLower, "admin")) return true;
 
   // Fallback legacy por variables de entorno.
   const list = parseEmails(process.env.ADMIN_EMAILS);

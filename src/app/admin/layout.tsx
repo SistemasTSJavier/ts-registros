@@ -24,7 +24,11 @@ export default async function AdminLayout({
   }
 
   const email = getUserEmail(session);
-  if (!(await isAdminEmail(email))) {
+  const wsForRole = email
+    ? await getResolvedWorkspaceForUserEmail(email)
+    : null;
+  const tenantId = wsForRole?.workspaceId ?? null;
+  if (!(await isAdminEmail(email, tenantId))) {
     redirect("/");
   }
 

@@ -10,6 +10,7 @@ import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
 import { sendMailHtml } from "@/lib/email";
 import { buildScheduledVisitPdf } from "@/lib/simple-pdf";
 import { createScheduledVisitInSheets } from "@/lib/sheets-visits";
+import { getResolvedWorkspaceForUserEmail } from "@/lib/workspace-resolver";
 
 export type ScheduledVisitActionState =
   | { ok: true; id: string; token: string; mailWarning?: string }
@@ -48,7 +49,9 @@ export async function createScheduledVisit(
         error: "Inicia sesión con Google para registrar visitas y enviar correos desde tu cuenta.",
       };
     }
-    if (!(await isAdminEmail(session.user.email.toLowerCase()))) {
+    const email = session.user.email.toLowerCase();
+    const ws = await getResolvedWorkspaceForUserEmail(email);
+    if (!(await isAdminEmail(email, ws?.workspaceId))) {
       return {
         ok: false,
         error:

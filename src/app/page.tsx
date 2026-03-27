@@ -16,10 +16,12 @@ async function signInWithGoogle() {
 export default async function Home() {
   const session = await auth();
   const email = getUserEmail(session);
-  const canOfficer = await isOfficerEmail(email);
   const legacyGoogle = await hasLegacyGoogleIntegration();
-  const workspaceActive =
-    email && (await getResolvedWorkspaceForUserEmail(email));
+  const workspaceActive = email
+    ? await getResolvedWorkspaceForUserEmail(email)
+    : null;
+  const tenantId = workspaceActive?.workspaceId ?? null;
+  const canOfficer = await isOfficerEmail(email, tenantId);
   const needsEspacio =
     Boolean(session?.user) && !legacyGoogle && !workspaceActive;
 
@@ -110,15 +112,30 @@ export default async function Home() {
             </div>
           </div>
         ) : (
-          <form action={signInWithGoogle} className="mt-10">
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-slate-900 px-8 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-            >
-              Iniciar sesión con Google
-            </button>
-          </form>
+          <div className="mt-10">
+            <form action={signInWithGoogle}>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-slate-900 px-8 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+              >
+                Iniciar sesión con Google
+              </button>
+            </form>
+          </div>
         )}
+
+        <footer className="mt-8 border-t border-slate-200/80 pt-5 text-center text-xs text-slate-500 dark:border-zinc-800 dark:text-zinc-500">
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link href="/politica-privacidad" className="underline underline-offset-4 hover:no-underline">
+              Política de privacidad
+            </Link>
+            <span>·</span>
+            <Link href="/politica-seguridad" className="underline underline-offset-4 hover:no-underline">
+              Política de seguridad
+            </Link>
+          </div>
+          <p className="mt-2">Tactical Support · Soporte técnico: Javier Ramirez (+52 814 616 0553)</p>
+        </footer>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { getUserEmail, isAdminEmail } from "@/lib/access";
 import { ScheduledVisitActions } from "@/components/scheduled-visit-actions";
 import { scheduledVisitListWindow } from "@/lib/visit-window";
 import { listScheduledInWindow } from "@/lib/sheets-visits";
+import { getResolvedWorkspaceForUserEmail } from "@/lib/workspace-resolver";
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("es-MX", {
@@ -31,7 +32,8 @@ const pdfBtn =
 export default async function VisitasProgramadasPage() {
   const session = await auth();
   const email = getUserEmail(session);
-  const canAdmin = await isAdminEmail(email);
+  const ws = email ? await getResolvedWorkspaceForUserEmail(email) : null;
+  const canAdmin = await isAdminEmail(email, ws?.workspaceId);
 
   const { start, end } = scheduledVisitListWindow();
   const visits = await listScheduledInWindow(start, end);

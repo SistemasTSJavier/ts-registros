@@ -10,6 +10,7 @@ import { syncGoogleDriveAndSheetsRecord } from "@/lib/google-records";
 import { sendMailHtml } from "@/lib/email";
 import { buildWalkInVisitPdf } from "@/lib/simple-pdf";
 import { createWalkInVisitInSheets, getWalkInByToken, updateWalkInStatusByToken } from "@/lib/sheets-visits";
+import { getResolvedWorkspaceForUserEmail } from "@/lib/workspace-resolver";
 
 export type WalkInActionState =
   | { ok: true; id: string }
@@ -198,7 +199,8 @@ export async function approveWalkInFromPanelAction(
 ): Promise<void> {
   const session = await auth();
   const email = session?.user?.email?.toLowerCase() ?? null;
-  if (!(await isAdminEmail(email))) {
+  const ws = email ? await getResolvedWorkspaceForUserEmail(email) : null;
+  if (!(await isAdminEmail(email, ws?.workspaceId))) {
     throw new Error("Solo una cuenta admin puede aprobar entradas desde el panel.");
   }
 
@@ -214,7 +216,8 @@ export async function denyWalkInFromPanelAction(
 ): Promise<void> {
   const session = await auth();
   const email = session?.user?.email?.toLowerCase() ?? null;
-  if (!(await isAdminEmail(email))) {
+  const ws = email ? await getResolvedWorkspaceForUserEmail(email) : null;
+  if (!(await isAdminEmail(email, ws?.workspaceId))) {
     throw new Error("Solo una cuenta admin puede denegar entradas desde el panel.");
   }
 

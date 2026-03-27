@@ -25,8 +25,12 @@ export default async function VisitasLayout({
     );
   }
   const email = getUserEmail(session);
-  const isOfficer = await isOfficerEmail(email);
-  const isAdmin = await isAdminEmail(email);
+  const wsForRole = email
+    ? await getResolvedWorkspaceForUserEmail(email)
+    : null;
+  const tenantId = wsForRole?.workspaceId ?? null;
+  const isOfficer = await isOfficerEmail(email, tenantId);
+  const isAdmin = await isAdminEmail(email, tenantId);
   if (!isOfficer && !isAdmin) {
     redirect("/");
   }

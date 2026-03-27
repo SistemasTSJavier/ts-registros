@@ -2,11 +2,13 @@ import Link from "next/link";
 
 import { auth } from "@/auth";
 import { getUserEmail, isAdminEmail } from "@/lib/access";
+import { getResolvedWorkspaceForUserEmail } from "@/lib/workspace-resolver";
 
 export default async function RegistroIndexPage() {
   const session = await auth();
   const email = getUserEmail(session);
-  const canAdmin = await isAdminEmail(email);
+  const ws = email ? await getResolvedWorkspaceForUserEmail(email) : null;
+  const canAdmin = await isAdminEmail(email, ws?.workspaceId);
 
   return (
     <div>
