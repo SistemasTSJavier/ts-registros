@@ -1,0 +1,19 @@
+{
+  "name": "appweb-registros",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n web,api -c blue,green \"npm run dev --workspace=web\" \"npm run dev --workspace=api\"",
+    "dev:web": "npm run dev --workspace=web",
+    "dev:api": "npm run dev --workspace=api",
+    "build": "npm run build --workspace=web && npm run build --workspace=api",
+    "preview": "npm run preview --workspace=web",
+    "seed": "npm run db:reset --workspace=api",
+    "db:reset": "npm run db:reset --workspace=api",
+    "deploy": "vercel",
+    "deploy:prod": "vercel --prod"
+  },
+  "workspaces": ["apps/*", "infra"],
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}
