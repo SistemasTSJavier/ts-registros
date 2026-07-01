@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { env } from '../env.js'
 import { generateId } from '../lib/utils.js'
 import { CATALOG_REGISTRATION_TYPES } from './catalog-types.js'
@@ -24,21 +24,22 @@ export async function ensureCatalog() {
 }
 
 export async function ensureAdminUser() {
-  const existing = await db.select({ id: users.id }).from(users).limit(1)
-  if (existing.length > 0) return
-
   if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) {
     console.warn(
-      '[bootstrap] Sin usuarios. Define ADMIN_EMAIL y ADMIN_PASSWORD en apps/api/.env para crear el administrador inicial.',
+      '[bootstrap] Define ADMIN_EMAIL y ADMIN_PASSWORD para crear el administrador inicial.',
     )
     return
   }
+
+  const adminEmail = env.ADMIN_EMAIL.toLowerCase()
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, adminEmail)).limit(1)
+  if (existing) return
 
   const passwordHash = await bcrypt.hash(env.ADMIN_PASSWORD, 10)
   await db.insert(users).values({
     id: generateId(),
     tenantId: null,
-    email: env.ADMIN_EMAIL,
+    email: adminEmail,
     name: env.ADMIN_NAME,
     role: 'admin',
     phone: null,
@@ -46,7 +47,7 @@ export async function ensureAdminUser() {
     isPrimary: false,
     passwordHash,
   })
-  console.log(`[bootstrap] Administrador creado: ${env.ADMIN_EMAIL}`)
+  console.log(`[bootstrap] Administrador creado: ${adminEmail}`)
 }
 
 export async function bootstrapDatabase() {
@@ -73,11 +74,12 @@ export async function resetDatabase() {
   }
 
   if (env.ADMIN_EMAIL && env.ADMIN_PASSWORD) {
+    const adminEmail = env.ADMIN_EMAIL.toLowerCase()
     const passwordHash = await bcrypt.hash(env.ADMIN_PASSWORD, 10)
     await db.insert(users).values({
       id: generateId(),
       tenantId: null,
-      email: env.ADMIN_EMAIL,
+      email: adminEmail,
       name: env.ADMIN_NAME,
       role: 'admin',
       phone: null,
@@ -85,7 +87,7 @@ export async function resetDatabase() {
       isPrimary: false,
       passwordHash,
     })
-    console.log(`[reset] Base limpia. Admin: ${env.ADMIN_EMAIL}`)
+    console.log(`[reset] Base limpia. Admin: ${adminEmail}`)
   } else {
     console.log('[reset] Base limpia. Sin admin — define ADMIN_EMAIL y ADMIN_PASSWORD y vuelve a ejecutar db:reset.')
   }

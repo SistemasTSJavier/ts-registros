@@ -2,7 +2,8 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { env } from './env.js'
 import { bootstrapDatabase } from './db/bootstrap.js'
-import { initDb } from './db/client.js'
+import { db, initDb } from './db/client.js'
+import { registrationTypes, users } from './db/schema.js'
 import { adminRoutes } from './routes/admin.js'
 import { authRoutes } from './routes/auth.js'
 import { catalogRoutes } from './routes/catalog.js'
@@ -35,6 +36,27 @@ export function createApp() {
 
   app.get('/health', (c) => c.json({ ok: true }))
   app.get('/api/health', (c) => c.json({ ok: true }))
+
+  app.get('/api/setup/status', async (c) => {
+    try {
+      const userCount = await db.select({ id: users.id }).from(users)
+      const typeCount = await db.select({ id: registrationTypes.id }).from(registrationTypes)
+      return c.json({
+        ok: true,
+        users: userCount.length,
+        registrationTypes: typeCount.length,
+        adminConfigured: Boolean(env.ADMIN_EMAIL && env.ADMIN_PASSWORD),
+      })
+    } catch (error) {
+      return c.json(
+        {
+          ok: false,
+          message: error instanceof Error ? error.message : 'Error de base de datos',
+        },
+        500,
+      )
+    }
+  })
 
   app.route('/api/auth', authRoutes)
   app.route('/api', catalogRoutes)

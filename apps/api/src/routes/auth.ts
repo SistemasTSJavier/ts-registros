@@ -17,7 +17,8 @@ export const authRoutes = new Hono()
 
 authRoutes.post('/login', async (c) => {
   const body = loginSchema.parse(await c.req.json())
-  const [userRow] = await db.select().from(users).where(eq(users.email, body.email)).limit(1)
+  const email = body.email.toLowerCase()
+  const [userRow] = await db.select().from(users).where(eq(users.email, email)).limit(1)
 
   if (!userRow) {
     return c.json({ message: 'Usuario no encontrado' }, 401)
