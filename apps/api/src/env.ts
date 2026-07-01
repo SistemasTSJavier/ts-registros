@@ -16,4 +16,21 @@ const envSchema = z.object({
   ADMIN_NAME: z.string().default('Administrador'),
 })
 
+const requiredKeys = [
+  'DATABASE_URL',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'JWT_SECRET',
+] as const
+
+const missing = requiredKeys.filter((key) => !process.env[key]?.trim())
+
+if (missing.length > 0) {
+  const hint =
+    process.env.VERCEL === '1'
+      ? ` Añádelas en Vercel → Project → Settings → Environment Variables (sin prefijo VITE_) y haz Redeploy.`
+      : ` Cópialas en apps/api/.env`
+  throw new Error(`Variables de entorno faltantes: ${missing.join(', ')}.${hint}`)
+}
+
 export const env = envSchema.parse(process.env)
