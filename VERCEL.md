@@ -25,7 +25,22 @@ Para producción:
 vercel --prod
 ```
 
-También puedes conectar el repo en [vercel.com/new](https://vercel.com/new): **Root Directory** = `.` (raíz del monorepo).
+También puedes conectar el repo en [vercel.com/new](https://vercel.com/new).
+
+### Si Vercel no te deja poner la raíz del repo
+
+Usa **Root Directory = `apps/web`** (Vite). Ese folder tiene su propio `vercel.json` que instala el monorepo y despliega la API en `/api`.
+
+| Campo | Valor |
+|-------|--------|
+| Root Directory | `apps/web` |
+| Framework | Vite |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
+
+### Si sí puedes usar la raíz
+
+**Root Directory** = `.` y se usa el `vercel.json` de la raíz del repo.
 
 ## 3. Variables de entorno en Vercel
 
