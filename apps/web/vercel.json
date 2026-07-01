@@ -6,7 +6,7 @@
   "framework": "vite",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "../api/src/db/migrations/**"
+      "includeFiles": "../api/src/**"
     }
   },
   "rewrites": [
