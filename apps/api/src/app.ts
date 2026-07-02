@@ -81,14 +81,19 @@ let ready: Promise<Hono> | null = null
 export async function getApp() {
   if (!ready) {
     ready = (async () => {
-      await initDb()
-      await bootstrapDatabase()
       try {
-        await ensureDocumentsBucket()
+        await initDb()
+        await bootstrapDatabase()
+        try {
+          await ensureDocumentsBucket()
+        } catch (error) {
+          console.warn('Storage bucket setup skipped:', error instanceof Error ? error.message : error)
+        }
+        return createApp()
       } catch (error) {
-        console.warn('Storage bucket setup skipped:', error instanceof Error ? error.message : error)
+        ready = null
+        throw error
       }
-      return createApp()
     })()
   }
   return ready
