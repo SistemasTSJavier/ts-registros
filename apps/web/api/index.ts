@@ -1,11 +1,11 @@
 import { handle } from 'hono/vercel'
 import { Hono } from 'hono'
-import { getApp } from '../../api/src/app.js'
 
 const root = new Hono()
 
 root.all('*', async (c) => {
   try {
+    const { getApp } = await import('../../api/src/app.js')
     const app = await getApp()
     return app.fetch(c.req.raw, c.env)
   } catch (error) {

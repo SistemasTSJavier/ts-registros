@@ -23,14 +23,28 @@ const requiredKeys = [
   'JWT_SECRET',
 ] as const
 
-const missing = requiredKeys.filter((key) => !process.env[key]?.trim())
+type Env = z.infer<typeof envSchema>
 
-if (missing.length > 0) {
-  const hint =
-    process.env.VERCEL === '1'
-      ? ` Añádelas en Vercel → Project → Settings → Environment Variables (sin prefijo VITE_) y haz Redeploy.`
-      : ` Cópialas en apps/api/.env`
-  throw new Error(`Variables de entorno faltantes: ${missing.join(', ')}.${hint}`)
+let cached: Env | null = null
+
+function loadEnv(): Env {
+  if (cached) return cached
+
+  const missing = requiredKeys.filter((key) => !process.env[key]?.trim())
+  if (missing.length > 0) {
+    const hint =
+      process.env.VERCEL === '1'
+        ? ' Añádelas en Vercel → Settings → Environment Variables (sin prefijo VITE_) y haz Redeploy.'
+        : ' Cópialas en apps/api/.env'
+    throw new Error(`Variables de entorno faltantes: ${missing.join(', ')}.${hint}`)
+  }
+
+  cached = envSchema.parse(process.env)
+  return cached
 }
 
-export const env = envSchema.parse(process.env)
+export const env: Env = new Proxy({} as Env, {
+  get(_target, prop) {
+    return loadEnv()[prop as keyof Env]
+  },
+})
