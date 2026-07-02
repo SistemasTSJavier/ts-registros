@@ -1,21 +1,18 @@
-import { handle } from 'hono/vercel'
-import { Hono } from 'hono'
+let cachedApp: Awaited<ReturnType<typeof import('../../api/src/app.js').getApp>> | null = null
 
-const root = new Hono()
-
-root.all('*', async (c) => {
+export default async function handler(req: Request): Promise<Response> {
   try {
-    const { getApp } = await import('../../api/src/app.js')
-    const app = await getApp()
-    return app.fetch(c.req.raw, c.env)
+    if (!cachedApp) {
+      const { getApp } = await import('../../api/src/app.js')
+      cachedApp = await getApp()
+    }
+    return cachedApp.fetch(req)
   } catch (error) {
-    console.error('API init failed:', error)
+    console.error('API failed:', error)
     const message = error instanceof Error ? error.message : 'Error al iniciar la API'
-    return c.json({ message, error: message }, 500)
+    return Response.json({ message, error: message }, { status: 500 })
   }
-})
-
-export default handle(root)
+}
 
 export const config = {
   maxDuration: 30,
